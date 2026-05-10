@@ -61,6 +61,13 @@ export interface TimerState {
   label: string;
 }
 
+export interface CountdownState {
+  durationSeconds: number;
+  remainingSeconds: number;
+  isRunning: boolean;
+  intervalAlertSeconds: number;
+}
+
 // ─── 5x5 Tracker ──────────────────────────────────────────────────────────────
 
 export type FxFWorkoutKey = 'A' | 'B';

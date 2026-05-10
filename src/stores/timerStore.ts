@@ -7,12 +7,22 @@ interface TimerStore {
   label: string;
   intervalId: ReturnType<typeof setInterval> | null;
 
-  start: (seconds?: number, label?: string) => void;
+  // Progressive rest
+  baseRestSeconds: number;
+  incrementSeconds: number;
+  totalSets: number;
+  currentSet: number;
+
+  start: (seconds?: number, label?: string, isFirstSet?: boolean) => void;
   pause: () => void;
   resume: () => void;
   reset: () => void;
   setDuration: (seconds: number) => void;
   tick: () => void;
+  startNextSet: () => void;
+  resetSets: () => void;
+  setIncrement: (seconds: number) => void;
+  setTotalSets: (n: number) => void;
 }
 
 export const useTimerStore = create<TimerStore>()((set, get) => ({
@@ -22,19 +32,27 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
   label: 'Rest Timer',
   intervalId: null,
 
-  start: (seconds, label) => {
+  // Progressive rest defaults
+  baseRestSeconds: 90,
+  incrementSeconds: 15,
+  totalSets: 5,
+  currentSet: 1,
+
+  start: (seconds, label, isFirstSet = false) => {
     const dur = seconds ?? get().durationSeconds;
     const prev = get().intervalId;
     if (prev !== null) clearInterval(prev);
 
     const id = setInterval(() => get().tick(), 1000);
-    set({
+    set((s) => ({
       durationSeconds: dur,
       remainingSeconds: dur,
       isRunning: true,
       label: label ?? 'Rest Timer',
       intervalId: id,
-    });
+      baseRestSeconds: isFirstSet ? dur : s.baseRestSeconds,
+      currentSet: isFirstSet ? 1 : s.currentSet,
+    }));
   },
 
   pause: () => {
@@ -73,4 +91,37 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
       }
       return { remainingSeconds: s.remainingSeconds - 1 };
     }),
+
+  startNextSet: () => {
+    const { baseRestSeconds, incrementSeconds, currentSet, totalSets } = get();
+    const nextSet = currentSet + 1;
+    if (nextSet > totalSets) return;
+    const nextDuration = baseRestSeconds + (nextSet - 1) * incrementSeconds;
+    const prev = get().intervalId;
+    if (prev !== null) clearInterval(prev);
+    const id = setInterval(() => get().tick(), 1000);
+    set({
+      currentSet: nextSet,
+      durationSeconds: nextDuration,
+      remainingSeconds: nextDuration,
+      isRunning: true,
+      label: 'Rest Timer',
+      intervalId: id,
+    });
+  },
+
+  resetSets: () => {
+    const id = get().intervalId;
+    if (id !== null) clearInterval(id);
+    set((s) => ({
+      currentSet: 1,
+      durationSeconds: s.baseRestSeconds,
+      remainingSeconds: s.baseRestSeconds,
+      isRunning: false,
+      intervalId: null,
+    }));
+  },
+
+  setIncrement: (seconds) => set({ incrementSeconds: seconds }),
+  setTotalSets: (n) => set({ totalSets: n }),
 }));
