@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
 import { HomePage } from './pages/HomePage';
 import { TrackPage } from './pages/TrackPage';
@@ -11,7 +11,7 @@ import { FiveByFivePage } from './pages/FiveByFivePage';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />
@@ -25,7 +25,7 @@ export default function App() {
           <Route path="/5x5" element={<FiveByFivePage />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
