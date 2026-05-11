@@ -8,8 +8,8 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
 function formatTime(s: number) { return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`; }
 
 export function TrackPage() {
-  const activeSuperset = useSupersetStore((s) => s.workouts.find((w) => w.id === s.activeWorkoutId && !w.completed));
-  const activeFive = useFiveByFiveStore((s) => s.workouts.find((w) => w.id === s.activeWorkoutId && !w.completed));
+  const activeSuperset = useSupersetStore((s) => s.sessions.find((w) => w.id === s.activeSessionId && !w.completed));
+  const activeFive = useFiveByFiveStore((s) => s.sessions.find((w) => w.id === s.activeSessionId && !w.completed));
   const timer = useTimerStore();
 
   return (
@@ -21,7 +21,7 @@ export function TrackPage() {
         {(activeSuperset || activeFive) && (
           <div className="bg-[var(--color-primary)] rounded-2xl p-4 text-white">
             <p className="text-xs font-medium text-green-200 mb-1">Active Workout</p>
-            <p className="font-semibold">{activeSuperset?.name ?? activeFive?.name}</p>
+            <p className="font-semibold">{activeSuperset ? (activeSuperset.entries[0]?.name ?? 'Superset Workout') : `Workout ${activeFive?.workout}`}</p>
             <p className="text-xs text-green-200 mt-0.5">{activeSuperset ? 'Superset' : '5x5'} • In Progress</p>
             <Link
               to={activeSuperset ? '/superset' : '/5x5'}

@@ -6,21 +6,6 @@ import { PageHeader } from '../components/PageHeader';
 import { CATEGORY_META, ALL_CATEGORIES, RECOMMENDATION_PRIORITY } from '../data/foods';
 import type { FoodCategory, FoodItem, DailyServing } from '../types';
 
-// ─── Category badge ───────────────────────────────────────────────────────────
-
-function CategoryBadge({ category, size = 'sm' }: { category: FoodCategory; size?: 'xs' | 'sm' }) {
-  const meta = CATEGORY_META[category];
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full font-medium ${
-        size === 'xs' ? 'text-xs px-2 py-0.5' : 'text-xs px-2.5 py-1'
-      } ${meta.bgClass} ${meta.textClass}`}
-    >
-      {meta.emoji} {meta.label}
-    </span>
-  );
-}
-
 // ─── Ring summary ─────────────────────────────────────────────────────────────
 
 function RingSummary({ total, goal }: { total: number; goal: number }) {
@@ -62,7 +47,7 @@ function RingSummary({ total, goal }: { total: number; goal: number }) {
 function ServingRow({
   serving,
   food,
-  date,
+  date: _date,
   onSetServings,
   onRemove,
 }: {
