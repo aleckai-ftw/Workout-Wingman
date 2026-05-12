@@ -59,15 +59,12 @@ export function playHalfwayBlip(): void {
   setTimeout(() => ctx.close(), 500);
 }
 
-/** Four regular-pitch blips then one higher — rest timer ending sequence. */
-export function playRestEndingSequence(): void {
+/** Single countdown blip — fired once per second on the last 4 seconds of rest. */
+export function playCountdownBlip(): void {
   const ctx = getAudioContext();
   if (!ctx) return;
-  const now = ctx.currentTime;
-  const gap = 0.22;
-  for (let i = 0; i < 4; i++) playTone(ctx, 880, now + i * gap, 0.15);
-  // higher final blip on the 5th beat, played when timer hits 0
-  setTimeout(() => ctx.close(), 2000);
+  playTone(ctx, 880, ctx.currentTime, 0.18, 0.35);
+  setTimeout(() => ctx.close(), 500);
 }
 
 /** Single high blip — rest period over, back to work. */
