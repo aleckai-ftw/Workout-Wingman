@@ -231,7 +231,7 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
           return next;
         }),
 
-      setPlanExerciseWeight: (workout, defId, weight) =>
+      setPlanExerciseWeight: (_workout, defId, weight) =>
         set((s) => {
           // Weight lives in exerciseDb, not the plan array
           const current = s.exerciseDb[defId];
