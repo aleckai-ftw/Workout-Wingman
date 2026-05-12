@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { playHalfwayBlip, playRestEndingSequence, playRestComplete } from '../lib/sounds';
 
 interface TimerStore {
   durationSeconds: number;
@@ -87,9 +88,23 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
     set((s) => {
       if (s.remainingSeconds <= 1) {
         if (s.intervalId !== null) clearInterval(s.intervalId);
+        playRestComplete();
         return { remainingSeconds: 0, isRunning: false, intervalId: null };
       }
-      return { remainingSeconds: s.remainingSeconds - 1 };
+      const next = s.remainingSeconds - 1;
+      const half = Math.floor(s.durationSeconds / 2);
+
+      // Halfway blip — fire once when we cross the midpoint
+      if (next === half && s.durationSeconds > 10) {
+        playHalfwayBlip();
+      }
+
+      // Last-5-seconds sequence — fire the 4 blips at exactly 5s remaining
+      if (next === 5) {
+        playRestEndingSequence();
+      }
+
+      return { remainingSeconds: next };
     }),
 
   startNextSet: () => {

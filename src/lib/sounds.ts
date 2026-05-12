@@ -51,6 +51,33 @@ export function playIntervalAlert(count = 1): void {
   setTimeout(() => ctx.close(), totalDuration);
 }
 
+/** Single soft blip — halfway-through rest reminder. */
+export function playHalfwayBlip(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  playTone(ctx, 660, ctx.currentTime, 0.18, 0.25);
+  setTimeout(() => ctx.close(), 500);
+}
+
+/** Four regular-pitch blips then one higher — rest timer ending sequence. */
+export function playRestEndingSequence(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const gap = 0.22;
+  for (let i = 0; i < 4; i++) playTone(ctx, 880, now + i * gap, 0.15);
+  // higher final blip on the 5th beat, played when timer hits 0
+  setTimeout(() => ctx.close(), 2000);
+}
+
+/** Single high blip — rest period over, back to work. */
+export function playRestComplete(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  playTone(ctx, 1320, ctx.currentTime, 0.35, 0.45);
+  setTimeout(() => ctx.close(), 700);
+}
+
 /** Descending fanfare — signals that warm-up has ended and the main timer is starting. */
 export function playWarmupComplete(): void {
   const ctx = getAudioContext();
