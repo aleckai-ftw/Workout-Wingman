@@ -83,9 +83,10 @@ export interface FxFExerciseDef {
   lastOutcome: 'success' | 'failure' | null;
 }
 
+/** Plan stores only IDs — actual defs live in exerciseDb for cross-workout sharing */
 export interface FxFPlan {
-  A: FxFExerciseDef[];
-  B: FxFExerciseDef[];
+  A: ID[];
+  B: ID[];
 }
 
 export interface FxFSet {
@@ -112,6 +113,7 @@ export interface FxFSession {
 }
 
 export interface FiveByFiveProgram {
+  exerciseDb: Record<ID, FxFExerciseDef>; // single source of truth for all exercises
   plan: FxFPlan;
   sessions: FxFSession[];
   activeSessionId: ID | null;
@@ -129,25 +131,24 @@ export interface CustomMuscleGroup {
 
 export type SsSetState = 'pending' | 'done' | 'failed';
 
+/** Individual exercise entity — single source of truth for weight/outcome */
+export interface SsExercise {
+  id: ID;
+  name: string;
+  muscleGroup: string; // primary muscle group (SsMuscleGroup or custom group id)
+  weightLbs: number;
+  lastWeightLbs: number | null;
+  lastOutcome: 'success' | 'failure' | null;
+}
+
 /** A superset pairing definition (from library or user-created) */
 export interface SsDef {
   id: ID;
   name: string;         // e.g. "Bench Press + Bent-Over Row"
   muscleGroup: SsMuscleGroup;
-  exerciseA: string;
-  exerciseB: string;
+  exerciseAId: ID;      // references SsExercise in exerciseDb
+  exerciseBId: ID;      // references SsExercise in exerciseDb
   isCustom: boolean;
-}
-
-/** Persistent weight/outcome state tracked per SsDef across sessions */
-export interface SsDefState {
-  defId: ID;
-  weightA: number;
-  weightB: number;
-  lastWeightA: number | null;
-  lastWeightB: number | null;
-  lastOutcomeA: 'success' | 'failure' | null;
-  lastOutcomeB: 'success' | 'failure' | null;
 }
 
 export interface SsSessionSet {
@@ -160,8 +161,10 @@ export interface SsSessionEntry {
   defId: ID;
   name: string;
   muscleGroup: SsMuscleGroup;
-  exerciseA: string;
-  exerciseB: string;
+  exerciseAId: ID;
+  exerciseBId: ID;
+  exerciseAName: string;    // snapshot of name at session start
+  exerciseBName: string;
   numSets: 1 | 3 | 5;
   weightA: number;          // weight snapshot at session start
   weightB: number;
@@ -180,9 +183,9 @@ export interface SsSession {
 }
 
 export interface SupersetProgram {
+  exerciseDb: Record<ID, SsExercise>; // single source of truth for exercise weights
   customDefs: SsDef[];
   customMuscleGroups: CustomMuscleGroup[];
-  defStates: Record<string, SsDefState>; // keyed by defId
   sessions: SsSession[];
   activeSessionId: ID | null;
 }

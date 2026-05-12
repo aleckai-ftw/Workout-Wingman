@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useSupersetStore } from '../stores/supersetStore';
 import { BUILT_IN_SS_DEFS, SS_MUSCLE_GROUPS, MUSCLE_GROUP_META } from '../data/supersets';
-import type { SsDef, SsMuscleGroup, SsSetState, CustomMuscleGroup } from '../types';
+import type { SsDef, SsExercise, SsMuscleGroup, SsSetState, CustomMuscleGroup } from '../types';
 
 // ─── Meta helper (handles both built-in and custom groups) ───────────────────
 
@@ -89,6 +89,281 @@ function generateSuggestion(
   });
 }
 
+// ─── Add exercise sheet ───────────────────────────────────────────────────────
+
+interface AddExerciseSheetProps {
+  onSaved: (ex: SsExercise) => void;
+  onClose: () => void;
+}
+
+function AddExerciseSheet({ onSaved, onClose }: AddExerciseSheetProps) {
+  const store = useSupersetStore();
+  const [name, setName] = useState('');
+  const [weight, setWeight] = useState(45);
+  const [muscleGroup, setMuscleGroup] = useState<string>('chest_back');
+
+  const canSave = name.trim().length > 0;
+
+  function handleSave() {
+    if (!canSave) return;
+    const ex = store.addExercise(name.trim(), weight, muscleGroup);
+    onSaved(ex);
+  }
+
+  const allGroups = SS_MUSCLE_GROUPS.map((mg) => ({ id: mg, ...MUSCLE_GROUP_META[mg] }));
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/60 z-[65]" onClick={onClose} />
+      <div
+        className="fixed left-1/2 -translate-x-1/2 z-[70] bg-white rounded-t-3xl flex flex-col w-full"
+        style={{ bottom: 64, maxHeight: '80vh', maxWidth: 480, boxShadow: '0 -8px 40px rgba(0,0,0,0.18)' }}
+      >
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </div>
+        <div className="px-4 pt-1 pb-3 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between">
+          <button onClick={onClose} className="text-sm text-[var(--color-text-muted)]">Cancel</button>
+          <h3 className="font-bold text-[var(--color-text)] text-lg">New Exercise</h3>
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            className="text-sm font-semibold text-[var(--color-primary)] disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 pb-6">
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+              Exercise Name
+            </label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              placeholder="e.g. Dumbbell Curls"
+              className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+
+          {/* Muscle group */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+              Muscle Group
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {allGroups.map((g) => {
+                const selected = muscleGroup === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => setMuscleGroup(g.id)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 text-sm font-semibold transition-colors ${
+                      selected
+                        ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
+                        : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                    }`}
+                  >
+                    <span>{g.emoji}</span>
+                    <span>{g.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+              Starting Weight
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setWeight((w) => Math.max(0, w - 5))}
+                className="w-11 h-11 rounded-full border-2 border-[var(--color-border)] text-xl font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+              >
+                −
+              </button>
+              <div className="flex-1 text-center">
+                <span className="text-3xl font-bold text-[var(--color-text)]">{weight}</span>
+                <span className="text-sm text-[var(--color-text-muted)] ml-1">lbs</span>
+              </div>
+              <button
+                onClick={() => setWeight((w) => w + 5)}
+                className="w-11 h-11 rounded-full bg-[var(--color-primary)] text-white text-xl font-bold flex items-center justify-center"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Exercise picker (inside CreateCustomSheet) ───────────────────────────────
+
+interface ExercisePickerProps {
+  label: string;
+  exerciseDb: Record<string, SsExercise>;
+  onSelect: (ex: SsExercise) => void;
+  onBack: () => void;
+  addExercise: (name: string, weight?: number, muscleGroup?: string) => SsExercise;
+  /** If provided, newly created exercises inherit this muscle group */
+  muscleGroupContext?: string;
+}
+
+function ExercisePicker({ label, exerciseDb, onSelect, onBack, addExercise, muscleGroupContext }: ExercisePickerProps) {
+  const [query, setQuery] = useState('');
+  const [creatingWeight, setCreatingWeight] = useState(45);
+
+  const all = Object.values(exerciseDb).sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = query
+    ? all.filter((ex) => ex.name.toLowerCase().includes(query.toLowerCase()))
+    : all;
+
+  const exactMatch = all.find((ex) => ex.name.toLowerCase() === query.toLowerCase().trim());
+
+  function handleCreate() {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    const ex = addExercise(trimmed, creatingWeight, muscleGroupContext ?? '');
+    onSelect(ex);
+  }
+
+  // Group exercises by muscle group when not searching
+  const groupedRows: Array<{ type: 'header'; id: string } | { type: 'exercise'; ex: SsExercise }> = [];
+  if (!query) {
+    const byGroup = new Map<string, SsExercise[]>();
+    for (const ex of all) {
+      const g = ex.muscleGroup || '__none__';
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g)!.push(ex);
+    }
+    // Show known groups first, then uncategorised
+    const orderedGroups = [...SS_MUSCLE_GROUPS.filter((g) => byGroup.has(g)), ...(byGroup.has('__none__') ? ['__none__'] : [])];
+    for (const g of orderedGroups) {
+      groupedRows.push({ type: 'header', id: g });
+      for (const ex of byGroup.get(g)!) groupedRows.push({ type: 'exercise', ex });
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-4 pt-2 pb-3 border-b border-[var(--color-border)] shrink-0 flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-[var(--color-primary)] text-sm font-semibold"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Back
+        </button>
+        <h3 className="font-bold text-[var(--color-text)] text-base flex-1 text-center pr-10">
+          {label}
+        </h3>
+      </div>
+      {/* Search */}
+      <div className="px-4 py-3 shrink-0">
+        <div className="relative">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search exercises..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)] bg-[var(--color-surface)]"
+          />
+        </div>
+      </div>
+      {/* List */}
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        {query ? (
+          <div className="space-y-2 pt-1">
+            {filtered.map((ex) => (
+              <button
+                key={ex.id}
+                onClick={() => onSelect(ex)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-left active:border-[var(--color-primary)]"
+              >
+                <span className="text-sm font-semibold text-[var(--color-text)]">{ex.name}</span>
+                <span className="text-sm font-bold text-[var(--color-primary)] shrink-0">{ex.weightLbs} lbs</span>
+              </button>
+            ))}
+            {/* Create new if no exact match */}
+            {query.trim() && !exactMatch && (
+              <div className="border-2 border-dashed border-[var(--color-primary)]/40 rounded-xl p-3 space-y-3">
+                <p className="text-sm font-semibold text-[var(--color-text)]">
+                  Create "<span className="text-[var(--color-primary)]">{query.trim()}</span>"
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setCreatingWeight((w) => Math.max(0, w - 5))}
+                    className="w-9 h-9 rounded-full border-2 border-[var(--color-border)] text-lg font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+                  >
+                    −
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-xl font-bold text-[var(--color-text)]">{creatingWeight}</span>
+                    <span className="text-xs text-[var(--color-text-muted)] ml-1">lbs</span>
+                  </div>
+                  <button
+                    onClick={() => setCreatingWeight((w) => w + 5)}
+                    className="w-9 h-9 rounded-full bg-[var(--color-primary)] text-white text-lg font-bold flex items-center justify-center"
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  onClick={handleCreate}
+                  className="w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-bold"
+                >
+                  Add &amp; Select
+                </button>
+              </div>
+            )}
+            {filtered.length === 0 && !query.trim() && (
+              <p className="text-sm text-[var(--color-text-muted)] text-center py-6">
+                No exercises yet. Type a name to create one.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-1 pt-1">
+            {groupedRows.map((row, i) =>
+              row.type === 'header' ? (
+                <div key={`h-${row.id}`} className={`text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] px-1 pt-3 pb-1 ${i === 0 ? 'pt-1' : ''}`}>
+                  {row.id === '__none__' ? 'Uncategorised' : `${MUSCLE_GROUP_META[row.id as SsMuscleGroup]?.emoji ?? ''} ${MUSCLE_GROUP_META[row.id as SsMuscleGroup]?.label ?? row.id}`}
+                </div>
+              ) : (
+                <button
+                  key={row.ex.id}
+                  onClick={() => onSelect(row.ex)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-left active:border-[var(--color-primary)]"
+                >
+                  <span className="text-sm font-semibold text-[var(--color-text)]">{row.ex.name}</span>
+                  <span className="text-sm font-bold text-[var(--color-primary)] shrink-0">{row.ex.weightLbs} lbs</span>
+                </button>
+              )
+            )}
+            {groupedRows.length === 0 && (
+              <p className="text-sm text-[var(--color-text-muted)] text-center py-6">
+                No exercises yet. Type a name above to create one.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Create custom superset sheet ────────────────────────────────────────────
 
 interface CreateCustomSheetProps {
@@ -98,10 +373,11 @@ interface CreateCustomSheetProps {
 
 function CreateCustomSheet({ onSaved, onClose }: CreateCustomSheetProps) {
   const store = useSupersetStore();
-  const [exerciseA, setExerciseA] = useState('');
-  const [exerciseB, setExerciseB] = useState('');
+  const [selectedExA, setSelectedExA] = useState<SsExercise | null>(null);
+  const [selectedExB, setSelectedExB] = useState<SsExercise | null>(null);
   const [nameManual, setNameManual] = useState('');
   const [muscleGroup, setMuscleGroup] = useState<string>('chest_back');
+  const [pickerFor, setPickerFor] = useState<'A' | 'B' | null>(null);
 
   // New category inline form
   const [addingCategory, setAddingCategory] = useState(false);
@@ -109,11 +385,8 @@ function CreateCustomSheet({ onSaved, onClose }: CreateCustomSheetProps) {
   const [newCatEmoji, setNewCatEmoji] = useState('💪');
 
   const autoName =
-    exerciseA.trim() && exerciseB.trim()
-      ? `${exerciseA.trim()} + ${exerciseB.trim()}`
-      : '';
-
-  const canSave = exerciseA.trim().length > 0 && exerciseB.trim().length > 0;
+    selectedExA && selectedExB ? `${selectedExA.name} + ${selectedExB.name}` : '';
+  const canSave = !!selectedExA && !!selectedExB;
 
   function handleSave() {
     if (!canSave) return;
@@ -121,8 +394,8 @@ function CreateCustomSheet({ onSaved, onClose }: CreateCustomSheetProps) {
     const def = store.addCustomDef({
       name,
       muscleGroup,
-      exerciseA: exerciseA.trim(),
-      exerciseB: exerciseB.trim(),
+      exerciseAId: selectedExA!.id,
+      exerciseBId: selectedExB!.id,
     });
     onSaved(def);
   }
@@ -156,149 +429,188 @@ function CreateCustomSheet({ onSaved, onClose }: CreateCustomSheetProps) {
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </div>
 
-        {/* Header */}
-        <div className="px-4 pt-1 pb-3 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between">
-          <button onClick={onClose} className="text-sm text-[var(--color-text-muted)]">
-            Cancel
-          </button>
-          <h3 className="font-bold text-[var(--color-text)] text-lg">New Superset</h3>
-          <button
-            onClick={handleSave}
-            disabled={!canSave}
-            className="text-sm font-semibold text-[var(--color-primary)] disabled:opacity-40"
-          >
-            Save
-          </button>
-        </div>
-
-        {/* Form */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-6">
-          {/* Exercise A */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
-              Exercise A
-            </label>
-            <input
-              autoFocus
-              value={exerciseA}
-              onChange={(e) => setExerciseA(e.target.value)}
-              placeholder="e.g. Bench Press"
-              className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-            />
-          </div>
-
-          {/* Exercise B */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
-              Exercise B
-            </label>
-            <input
-              value={exerciseB}
-              onChange={(e) => setExerciseB(e.target.value)}
-              placeholder="e.g. Bent-Over Row"
-              className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-            />
-          </div>
-
-          {/* Name override */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
-              Name <span className="font-normal normal-case">(optional — auto-filled)</span>
-            </label>
-            <input
-              value={nameManual}
-              onChange={(e) => setNameManual(e.target.value)}
-              placeholder={autoName || 'Auto-generated from exercises'}
-              className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)] placeholder:text-[var(--color-text-muted)]/50"
-            />
-          </div>
-
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
-              Category
-            </label>
-            <div className="space-y-2">
-              {allGroups.map((g) => {
-                const selected = muscleGroup === g.id;
-                return (
-                  <button
-                    key={g.id}
-                    onClick={() => setMuscleGroup(g.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-colors ${
-                      selected
-                        ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5'
-                        : 'border-[var(--color-border)] bg-white'
-                    }`}
-                  >
-                    <span className="text-xl shrink-0">{g.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-semibold ${selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text)]'}`}>
-                        {g.label}
-                      </p>
-                      {g.description && (
-                        <p className="text-xs text-[var(--color-text-muted)]">{g.description}</p>
-                      )}
-                    </div>
-                    {selected && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4 text-[var(--color-primary)] shrink-0">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                  </button>
-                );
-              })}
-
-              {/* Inline new category form */}
-              {addingCategory ? (
-                <div className="border-2 border-[var(--color-primary)] rounded-xl p-3 space-y-2">
-                  <p className="text-xs font-semibold text-[var(--color-primary)] uppercase tracking-wide">New Category</p>
-                  <div className="flex gap-2">
-                    <input
-                      autoFocus
-                      value={newCatEmoji}
-                      onChange={(e) => setNewCatEmoji(e.target.value)}
-                      maxLength={2}
-                      placeholder="🏋️"
-                      className="w-14 px-2 py-2.5 rounded-lg border border-[var(--color-border)] text-center text-lg focus:outline-none focus:border-[var(--color-primary)]"
-                    />
-                    <input
-                      value={newCatLabel}
-                      onChange={(e) => setNewCatLabel(e.target.value)}
-                      placeholder="e.g. Forearms"
-                      className="flex-1 px-3 py-2.5 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { setAddingCategory(false); setNewCatLabel(''); setNewCatEmoji('💪'); }}
-                      className="flex-1 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] font-medium"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSaveCategory}
-                      disabled={!newCatLabel.trim()}
-                      className="flex-1 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold disabled:opacity-40"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAddingCategory(true)}
-                  className="w-full py-3.5 border-2 border-dashed border-[var(--color-border)] rounded-xl text-sm text-[var(--color-text-muted)] font-medium flex items-center justify-center gap-2 active:border-[var(--color-primary)] active:text-[var(--color-primary)]"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
-                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  New category
-                </button>
-              )}
+        {pickerFor ? (
+          /* ── Exercise picker mode ── */
+          <ExercisePicker
+            label={`Select Exercise ${pickerFor}`}
+            exerciseDb={store.exerciseDb}
+            onSelect={(ex) => {
+              pickerFor === 'A' ? setSelectedExA(ex) : setSelectedExB(ex);
+              setPickerFor(null);
+            }}
+            onBack={() => setPickerFor(null)}
+            addExercise={store.addExercise}
+            muscleGroupContext={muscleGroup}
+          />
+        ) : (
+          /* ── Normal form mode ── */
+          <>
+            {/* Header */}
+            <div className="px-4 pt-1 pb-3 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between">
+              <button onClick={onClose} className="text-sm text-[var(--color-text-muted)]">
+                Cancel
+              </button>
+              <h3 className="font-bold text-[var(--color-text)] text-lg">New Superset</h3>
+              <button
+                onClick={handleSave}
+                disabled={!canSave}
+                className="text-sm font-semibold text-[var(--color-primary)] disabled:opacity-40"
+              >
+                Save
+              </button>
             </div>
-          </div>
-        </div>
+
+            {/* Form */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-6">
+              {/* Exercise A picker */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+                  Exercise A
+                </label>
+                <button
+                  onClick={() => setPickerFor('A')}
+                  className={`w-full px-3.5 py-3 rounded-xl border text-left text-sm transition-colors ${
+                    selectedExA
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}
+                >
+                  {selectedExA ? (
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[var(--color-text)]">{selectedExA.name}</span>
+                      <span className="font-bold text-[var(--color-primary)]">{selectedExA.weightLbs} lbs</span>
+                    </div>
+                  ) : (
+                    <span>Tap to select exercise A…</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Exercise B picker */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+                  Exercise B
+                </label>
+                <button
+                  onClick={() => setPickerFor('B')}
+                  className={`w-full px-3.5 py-3 rounded-xl border text-left text-sm transition-colors ${
+                    selectedExB
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}
+                >
+                  {selectedExB ? (
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[var(--color-text)]">{selectedExB.name}</span>
+                      <span className="font-bold text-[var(--color-primary)]">{selectedExB.weightLbs} lbs</span>
+                    </div>
+                  ) : (
+                    <span>Tap to select exercise B…</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Name override */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+                  Name <span className="font-normal normal-case">(optional — auto-filled)</span>
+                </label>
+                <input
+                  value={nameManual}
+                  onChange={(e) => setNameManual(e.target.value)}
+                  placeholder={autoName || 'Auto-generated from exercises'}
+                  className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)] placeholder:text-[var(--color-text-muted)]/50"
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+                  Category
+                </label>
+                <div className="space-y-2">
+                  {allGroups.map((g) => {
+                    const selected = muscleGroup === g.id;
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => setMuscleGroup(g.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-colors ${
+                          selected
+                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5'
+                            : 'border-[var(--color-border)] bg-white'
+                        }`}
+                      >
+                        <span className="text-xl shrink-0">{g.emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-semibold ${selected ? 'text-[var(--color-primary)]' : 'text-[var(--color-text)]'}`}>
+                            {g.label}
+                          </p>
+                          {g.description && (
+                            <p className="text-xs text-[var(--color-text-muted)]">{g.description}</p>
+                          )}
+                        </div>
+                        {selected && (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4 text-[var(--color-primary)] shrink-0">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  {/* Inline new category form */}
+                  {addingCategory ? (
+                    <div className="border-2 border-[var(--color-primary)] rounded-xl p-3 space-y-2">
+                      <p className="text-xs font-semibold text-[var(--color-primary)] uppercase tracking-wide">New Category</p>
+                      <div className="flex gap-2">
+                        <input
+                          autoFocus
+                          value={newCatEmoji}
+                          onChange={(e) => setNewCatEmoji(e.target.value)}
+                          maxLength={2}
+                          placeholder="🏋️"
+                          className="w-14 px-2 py-2.5 rounded-lg border border-[var(--color-border)] text-center text-lg focus:outline-none focus:border-[var(--color-primary)]"
+                        />
+                        <input
+                          value={newCatLabel}
+                          onChange={(e) => setNewCatLabel(e.target.value)}
+                          placeholder="e.g. Forearms"
+                          className="flex-1 px-3 py-2.5 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setAddingCategory(false); setNewCatLabel(''); setNewCatEmoji('💪'); }}
+                          className="flex-1 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveCategory}
+                          disabled={!newCatLabel.trim()}
+                          className="flex-1 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-semibold disabled:opacity-40"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAddingCategory(true)}
+                      className="w-full py-3.5 border-2 border-dashed border-[var(--color-border)] rounded-xl text-sm text-[var(--color-text-muted)] font-medium flex items-center justify-center gap-2 active:border-[var(--color-primary)] active:text-[var(--color-primary)]"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      New category
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </>
   );
@@ -308,9 +620,9 @@ function CreateCustomSheet({ onSaved, onClose }: CreateCustomSheetProps) {
 
 interface SheetProps {
   allDefs: SsDef[];
+  exerciseDb: Record<string, { name: string; weightLbs: number }>;
   usedDefIds: Set<string>;
   lastSessionDefIds: Set<string>;
-  defStates: Record<string, { weightA: number; weightB: number }>;
   customMuscleGroups: CustomMuscleGroup[];
   onSelect: (def: SsDef) => void;
   onClose: () => void;
@@ -319,9 +631,9 @@ interface SheetProps {
 
 function SearchSheet({
   allDefs,
+  exerciseDb,
   usedDefIds,
   lastSessionDefIds,
-  defStates,
   customMuscleGroups,
   onSelect,
   onClose,
@@ -334,11 +646,13 @@ function SearchSheet({
     const q = query.toLowerCase();
     return allDefs.filter((d) => {
       const matchGroup = filterGroup === 'all' || d.muscleGroup === filterGroup;
+      const nameA = exerciseDb[d.exerciseAId]?.name ?? '';
+      const nameB = exerciseDb[d.exerciseBId]?.name ?? '';
       const matchQuery =
         !q ||
         d.name.toLowerCase().includes(q) ||
-        d.exerciseA.toLowerCase().includes(q) ||
-        d.exerciseB.toLowerCase().includes(q);
+        nameA.toLowerCase().includes(q) ||
+        nameB.toLowerCase().includes(q);
       return matchGroup && matchQuery;
     });
   }, [allDefs, query, filterGroup]);
@@ -445,7 +759,8 @@ function SearchSheet({
           {filtered.map((def) => {
             const isUsed = usedDefIds.has(def.id);
             const wasLast = lastSessionDefIds.has(def.id);
-            const state = defStates[def.id];
+            const exA = exerciseDb[def.exerciseAId];
+            const exB = exerciseDb[def.exerciseBId];
             const meta = getMeta(def.muscleGroup, customMuscleGroups);
 
             return (
@@ -477,19 +792,17 @@ function SearchSheet({
                     </div>
                     <p className="text-sm font-semibold text-[var(--color-text)]">{def.name}</p>
                     <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                      A: {def.exerciseA}
+                      A: {exA?.name ?? def.exerciseAId}
                     </p>
-                    <p className="text-xs text-[var(--color-text-muted)]">B: {def.exerciseB}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      B: {exB?.name ?? def.exerciseBId}
+                    </p>
                   </div>
-                  {state && (
+                  {(exA || exB) && (
                     <div className="text-right shrink-0 mt-0.5">
                       <p className="text-xs text-[var(--color-text-muted)]">Planned</p>
-                      <p className="text-xs font-bold text-[var(--color-primary)]">
-                        A {state.weightA}lbs
-                      </p>
-                      <p className="text-xs font-bold text-[var(--color-primary)]">
-                        B {state.weightB}lbs
-                      </p>
+                      {exA && <p className="text-xs font-bold text-[var(--color-primary)]">A {exA.weightLbs}lbs</p>}
+                      {exB && <p className="text-xs font-bold text-[var(--color-primary)]">B {exB.weightLbs}lbs</p>}
                     </div>
                   )}
                 </div>
@@ -524,6 +837,10 @@ function SearchSheet({
 
 export function SupersetPage() {
   const store = useSupersetStore();
+
+  // Tab
+  const [tab, setTab] = useState<'supersets' | 'exercises'>('supersets');
+  const [showAddExercise, setShowAddExercise] = useState(false);
 
   // Planning state
   const [slots, setSlots] = useState<(string | null)[]>([null, null, null, null, null]);
@@ -587,8 +904,8 @@ export function SupersetPage() {
       return {
         defId: def.id,
         defName: def.name,
-        exerciseA: def.exerciseA,
-        exerciseB: def.exerciseB,
+        exerciseAId: def.exerciseAId,
+        exerciseBId: def.exerciseBId,
         muscleGroup: def.muscleGroup,
         numSets: numSetsMap[defId!] as 1 | 3 | 5,
       };
@@ -673,7 +990,7 @@ export function SupersetPage() {
                           A
                         </span>
                         <span className="text-sm font-semibold text-[var(--color-text)] flex-1 truncate">
-                          {entry.exerciseA}
+                          {entry.exerciseAName}
                         </span>
                         {entry.lastWeightA !== null && (
                           <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-1 rounded-lg shrink-0">
@@ -710,7 +1027,7 @@ export function SupersetPage() {
                           B
                         </span>
                         <span className="text-sm font-semibold text-[var(--color-text)] flex-1 truncate">
-                          {entry.exerciseB}
+                          {entry.exerciseBName}
                         </span>
                         {entry.lastWeightB !== null && (
                           <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-1 rounded-lg shrink-0">
@@ -803,10 +1120,124 @@ export function SupersetPage() {
 
   // ─── Planning view ────────────────────────────────────────────────────────
 
+  const sortedExercises = useMemo(
+    () => Object.values(store.exerciseDb).sort((a, b) => a.name.localeCompare(b.name)),
+    [store.exerciseDb],
+  );
+
+  // Exercises grouped by muscle group for the exercises tab
+  const exercisesByGroup = useMemo(() => {
+    const byGroup = new Map<string, SsExercise[]>();
+    for (const ex of sortedExercises) {
+      const g = ex.muscleGroup || '__none__';
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g)!.push(ex);
+    }
+    const orderedGroups = [
+      ...SS_MUSCLE_GROUPS.filter((g) => byGroup.has(g)),
+      ...(byGroup.has('__none__') ? ['__none__'] : []),
+    ];
+    return orderedGroups.map((g) => ({
+      groupId: g,
+      label: g === '__none__' ? 'Uncategorised' : `${MUSCLE_GROUP_META[g as SsMuscleGroup]?.emoji ?? ''} ${MUSCLE_GROUP_META[g as SsMuscleGroup]?.label ?? g}`,
+      exercises: byGroup.get(g)!,
+    }));
+  }, [sortedExercises]);
+
   return (
     <div className="flex flex-col flex-1">
       <PageHeader title="Supersets" showBack />
 
+      {/* Tab toggle */}
+      <div className="px-4 pt-3 pb-1 shrink-0">
+        <div className="flex bg-[var(--color-surface)] rounded-xl p-1 gap-1">
+          {(['supersets', 'exercises'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors capitalize ${
+                tab === t
+                  ? 'bg-white text-[var(--color-text)] shadow-sm'
+                  : 'text-[var(--color-text-muted)]'
+              }`}
+            >
+              {t === 'supersets' ? 'Supersets' : 'Exercises'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Exercises tab ── */}
+      {tab === 'exercises' && (
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-8">
+          <button
+            onClick={() => setShowAddExercise(true)}
+            className="w-full py-3.5 border-2 border-dashed border-[var(--color-primary)]/50 rounded-xl text-sm text-[var(--color-primary)] font-semibold flex items-center justify-center gap-2 mb-4"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Exercise
+          </button>
+
+          {sortedExercises.length === 0 && (
+            <p className="text-sm text-[var(--color-text-muted)] text-center py-10">
+              No exercises yet. Add one above.
+            </p>
+          )}
+
+          {exercisesByGroup.map(({ groupId, label, exercises }) => (
+            <div key={groupId} className="mb-5">
+              <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-2 px-0.5">
+                {label}
+              </p>
+              <div className="space-y-2">
+                {exercises.map((ex) => (
+                  <div
+                    key={ex.id}
+                    className="bg-white border border-[var(--color-border)] rounded-xl px-4 py-3 flex items-center gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">{ex.name}</p>
+                      {ex.lastWeightLbs !== null && (
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          Last: {ex.lastWeightLbs} lbs
+                          {ex.lastOutcome && (
+                            <span className={`ml-1 ${ex.lastOutcome === 'success' ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
+                              {ex.lastOutcome === 'success' ? '↑' : '↓'}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => store.updateExerciseWeight(ex.id, -5)}
+                        className="w-8 h-8 rounded-full border-2 border-[var(--color-border)] text-lg font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+                      >
+                        −
+                      </button>
+                      <div className="w-16 text-center">
+                        <span className="text-lg font-black text-[var(--color-text)]">{ex.weightLbs}</span>
+                        <span className="text-xs text-[var(--color-text-muted)] ml-0.5">lbs</span>
+                      </div>
+                      <button
+                        onClick={() => store.updateExerciseWeight(ex.id, 5)}
+                        className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white text-lg font-bold flex items-center justify-center"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Supersets tab ── */}
+      {tab === 'supersets' && (
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Suggested workout card */}
         {showSuggestion && (
@@ -846,7 +1277,7 @@ export function SupersetPage() {
                         {def.name}
                       </p>
                       <p className="text-xs text-[var(--color-text-muted)]">
-                        {def.exerciseA} / {def.exerciseB}
+                        {store.exerciseDb[def.exerciseAId]?.name ?? def.exerciseAId} / {store.exerciseDb[def.exerciseBId]?.name ?? def.exerciseBId}
                       </p>
                     </div>
                   </div>
@@ -904,7 +1335,7 @@ export function SupersetPage() {
                     <span className="text-base shrink-0">{meta.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-[var(--color-text)] truncate">{entry.name}</p>
-                      <p className="text-xs text-[var(--color-text-muted)]">{entry.exerciseA} / {entry.exerciseB}</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">{entry.exerciseAName} / {entry.exerciseBName}</p>
                     </div>
                     <span className="text-xs text-[var(--color-text-muted)] shrink-0">{entry.numSets} sets</span>
                   </div>
@@ -957,7 +1388,8 @@ export function SupersetPage() {
           {/* 5 slot rows */}
           {slots.map((defId, i) => {
             const def = defId ? allDefs.find((d) => d.id === defId) : null;
-            const state = defId ? store.defStates[defId] : null;
+            const exA = def ? store.exerciseDb[def.exerciseAId] : null;
+            const exB = def ? store.exerciseDb[def.exerciseBId] : null;
 
             return (
               <div
@@ -986,8 +1418,8 @@ export function SupersetPage() {
                       <p className="text-xs text-[var(--color-text-muted)]">
                         {getMeta(def.muscleGroup, store.customMuscleGroups).emoji}{' '}
                         {getMeta(def.muscleGroup, store.customMuscleGroups).label}
-                        {state
-                          ? ` · A ${state.weightA}lbs / B ${state.weightB}lbs`
+                        {(exA || exB)
+                          ? ` · A ${exA?.weightLbs ?? '?'}lbs / B ${exB?.weightLbs ?? '?'}lbs`
                           : ''}
                       </p>
                     </div>
@@ -1100,14 +1532,15 @@ export function SupersetPage() {
           </section>
         )}
       </div>
+      )} {/* end tab === 'supersets' */}
 
       {/* Search / browse sheet */}
       {openSlot !== null && (
         <SearchSheet
           allDefs={allDefs}
+          exerciseDb={store.exerciseDb}
           usedDefIds={usedDefIds}
           lastSessionDefIds={lastSessionDefIds}
-          defStates={store.defStates}
           customMuscleGroups={store.customMuscleGroups}
           onSelect={handleSlotSelect}
           onClose={() => setOpenSlot(null)}
@@ -1123,6 +1556,14 @@ export function SupersetPage() {
             handleSlotSelect(def);
           }}
           onClose={() => setShowCreate(false)}
+        />
+      )}
+
+      {/* Add exercise sheet */}
+      {showAddExercise && (
+        <AddExerciseSheet
+          onSaved={() => setShowAddExercise(false)}
+          onClose={() => setShowAddExercise(false)}
         />
       )}
     </div>

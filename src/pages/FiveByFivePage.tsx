@@ -76,15 +76,23 @@ function SessionExCard({
           : 'border-[var(--color-border)]'
       }`}
     >
-      {/* Name + +5 button */}
+      {/* Name + weight adjust buttons */}
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-[var(--color-text)]">{exercise.name}</h3>
-        <button
-          onClick={() => onAdjust(exIdx, 5)}
-          className="flex items-center gap-1 text-xs font-bold text-[var(--color-primary)] border-2 border-[var(--color-primary)] rounded-full px-2.5 py-1 active:bg-[var(--color-primary)] active:text-white transition-colors"
-        >
-          +5 lbs
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onAdjust(exIdx, -5)}
+            className="flex items-center gap-1 text-xs font-bold text-[var(--color-danger)] border-2 border-[var(--color-danger)] rounded-full px-2.5 py-1 active:bg-[var(--color-danger)] active:text-white transition-colors"
+          >
+            −5 lbs
+          </button>
+          <button
+            onClick={() => onAdjust(exIdx, 5)}
+            className="flex items-center gap-1 text-xs font-bold text-[var(--color-primary)] border-2 border-[var(--color-primary)] rounded-full px-2.5 py-1 active:bg-[var(--color-primary)] active:text-white transition-colors"
+          >
+            +5 lbs
+          </button>
+        </div>
       </div>
 
       {/* Weight */}
@@ -393,6 +401,7 @@ function WorkoutPlanCard({
 
 export function FiveByFivePage() {
   const {
+    exerciseDb,
     plan,
     sessions,
     activeSessionId,
@@ -409,6 +418,11 @@ export function FiveByFivePage() {
   const [editingWorkout, setEditingWorkout] = useState<FxFWorkoutKey | null>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId && !s.completed);
+
+  // Resolve plan ID arrays → FxFExerciseDef arrays for rendering
+  function defsFor(workout: FxFWorkoutKey): FxFExerciseDef[] {
+    return plan[workout].map((id) => exerciseDb[id]).filter(Boolean);
+  }
 
   function lastSessionOf(workout: FxFWorkoutKey) {
     return sessions.filter((s) => s.workout === workout && s.completed).at(-1);
@@ -475,7 +489,7 @@ export function FiveByFivePage() {
           <WorkoutPlanCard
             key={workout}
             workout={workout}
-            defs={plan[workout]}
+            defs={defsFor(workout)}
             lastSession={lastSessionOf(workout)}
             editing={editingWorkout === workout}
             onStart={() => startSession(workout)}

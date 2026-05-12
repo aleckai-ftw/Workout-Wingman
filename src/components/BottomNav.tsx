@@ -1,18 +1,5 @@
 import { NavLink } from 'react-router-dom';
 
-type NavItem = {
-  to: string;
-  label: string;
-  icon: React.ReactNode;
-};
-
-const HomeIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-    <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
-    <polyline points="9 22 9 12 15 12 15 22" />
-  </svg>
-);
-
 const SupersetIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
     <rect x="2" y="10" width="4" height="4" rx="1" />
@@ -41,25 +28,92 @@ const ProteinIcon = () => (
   </svg>
 );
 
-const navItems: NavItem[] = [
+const TimerIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+    <circle cx="12" cy="13" r="8" />
+    <polyline points="12 9 12 13 15 15" />
+    <line x1="9" y1="2" x2="15" y2="2" />
+    <line x1="12" y1="2" x2="12" y2="5" />
+  </svg>
+);
+
+// Home icon — filled style to stand out
+const HomeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
+    <path d="M12 2.5L3 9.5V20a1 1 0 0 0 1 1h5v-6h6v6h5a1 1 0 0 0 1-1V9.5L12 2.5z" />
+  </svg>
+);
+
+type SideItem = { to: string; label: string; icon: React.ReactNode };
+
+const leftItems: SideItem[] = [
   { to: '/superset', label: 'Supersets', icon: <SupersetIcon /> },
-  { to: '/5x5', label: '5x5', icon: <FiveByFiveIcon /> },
+  { to: '/5x5', label: '5×5', icon: <FiveByFiveIcon /> },
+];
+
+const rightItems: SideItem[] = [
   { to: '/protein', label: 'Protein', icon: <ProteinIcon /> },
-  { to: '/', label: 'Home', icon: <HomeIcon /> },
+  { to: '/timer', label: 'Timer', icon: <TimerIcon /> },
 ];
 
 export function BottomNav() {
   return (
     <nav className="sticky bottom-0 left-0 right-0 bg-white border-t border-[var(--color-border)] z-[55]">
-      <div className="flex items-center justify-around h-16 px-2">
-        {navItems.map(({ to, label, icon }) => (
+      <div className="flex items-end justify-around h-16 px-2">
+        {/* Left items */}
+        {leftItems.map(({ to, label, icon }) => (
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
             className={({ isActive }) =>
               [
-                'flex flex-col items-center gap-0.5 text-xs font-medium px-3 py-1 rounded-xl transition-colors',
+                'flex flex-col items-center gap-0.5 text-xs font-medium px-3 py-2 rounded-xl transition-colors',
+                isActive
+                  ? 'text-[var(--color-primary)]'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]',
+              ].join(' ')
+            }
+          >
+            {icon}
+            <span>{label}</span>
+          </NavLink>
+        ))}
+
+        {/* Home — raised center button */}
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            [
+              'flex flex-col items-center gap-1 text-xs font-bold px-1 -mt-5 transition-colors',
+              isActive ? 'text-white' : 'text-white',
+            ].join(' ')
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <span
+                className={`flex items-center justify-center w-14 h-14 rounded-full shadow-lg transition-colors ${
+                  isActive
+                    ? 'bg-[var(--color-primary)]'
+                    : 'bg-[var(--color-primary)] opacity-90 hover:opacity-100'
+                }`}
+              >
+                <HomeIcon />
+              </span>
+              <span className="text-[var(--color-primary)] font-semibold">Home</span>
+            </>
+          )}
+        </NavLink>
+
+        {/* Right items */}
+        {rightItems.map(({ to, label, icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              [
+                'flex flex-col items-center gap-0.5 text-xs font-medium px-3 py-2 rounded-xl transition-colors',
                 isActive
                   ? 'text-[var(--color-primary)]'
                   : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]',

@@ -111,17 +111,19 @@ function MinSecInput({
   totalSeconds,
   onChange,
   label,
+  allowZero = false,
 }: {
   totalSeconds: number;
   onChange: (seconds: number) => void;
   label: string;
+  allowZero?: boolean;
 }) {
   const [mins, setMins] = useState(String(Math.floor(totalSeconds / 60)));
   const [secs, setSecs] = useState(String(totalSeconds % 60));
 
   const commit = (m: string, s: string) => {
     const total = (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0);
-    if (total > 0) onChange(total);
+    if (total > 0 || allowZero) onChange(total);
   };
 
   return (
@@ -329,27 +331,49 @@ function RestTab() {
 
 function CountdownTab() {
   const cd = useCountdownStore();
-  const isDone = cd.remainingSeconds === 0 && cd.durationSeconds > 0;
+  const isDone = cd.remainingSeconds === 0 && cd.phase === 'idle' && cd.durationSeconds > 0;
+  const isWarmup = cd.phase === 'warmup';
+  const isMain = cd.phase === 'main';
+
+  // During warmup, show warmup ring; otherwise show main ring
+  const mainLabel = isWarmup ? 'Starting soon…' : 'Countdown';
 
   return (
     <div className="flex flex-col items-center gap-6 pb-6">
-      {/* Ring */}
-      <TimerRing
-        remaining={cd.remainingSeconds}
-        duration={cd.durationSeconds}
-        label="Countdown"
-        isDone={isDone}
-      />
+      {/* Warm-up ring — shown only during warmup phase */}
+      {isWarmup && (
+        <div className="flex flex-col items-center gap-2">
+          <TimerRing
+            remaining={cd.remainingSeconds}
+            duration={cd.warmupSeconds}
+            label="Warm Up"
+            isDone={false}
+          />
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Main timer starts after warm-up
+          </p>
+        </div>
+      )}
+
+      {/* Main ring — hidden during warmup */}
+      {!isWarmup && (
+        <TimerRing
+          remaining={isMain ? cd.remainingSeconds : cd.durationSeconds}
+          duration={cd.durationSeconds}
+          label={mainLabel}
+          isDone={isDone}
+        />
+      )}
 
       {/* Controls */}
       <PlayPauseReset
         isRunning={cd.isRunning}
-        onPlay={() => (cd.remainingSeconds === cd.durationSeconds ? cd.start() : cd.resume())}
+        onPlay={() => (cd.phase === 'idle' ? cd.start() : cd.resume())}
         onPause={cd.pause}
         onReset={cd.reset}
       />
 
-      {/* Duration setting */}
+      {/* Duration setting — disabled while running */}
       <div className="w-full">
         <MinSecInput
           totalSeconds={cd.durationSeconds}
@@ -358,12 +382,28 @@ function CountdownTab() {
         />
       </div>
 
+      {/* Warm-up setting */}
+      <div className="w-full border border-[var(--color-border)] rounded-2xl p-4 flex flex-col gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--color-text)]">Warm-Up</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+            Optional countdown before the main timer starts. Set to 0:00 to skip.
+          </p>
+        </div>
+        <MinSecInput
+          totalSeconds={cd.warmupSeconds}
+          onChange={(s) => cd.setWarmup(s)}
+          label="Warm-up duration"
+          allowZero
+        />
+      </div>
+
       {/* Interval alert setting */}
       <div className="w-full border border-[var(--color-border)] rounded-2xl p-4 flex flex-col gap-3">
         <div>
           <p className="text-sm font-semibold text-[var(--color-text)]">Interval Alert</p>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            A short beep plays at every interval. Set to 0:00 to disable.
+            Blips play at every interval — 1st alert = 1 blip, 2nd = 2, and so on. Set to 0:00 to disable.
           </p>
         </div>
         <MinSecInput
@@ -387,7 +427,7 @@ function CountdownTab() {
                       key={i}
                       className="text-xs px-2 py-0.5 rounded-lg bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)]"
                     >
-                      {formatTime(atRemaining)} left
+                      {formatTime(atRemaining)} left — {i + 1} blip{i + 1 !== 1 ? 's' : ''}
                     </span>
                   );
                 },

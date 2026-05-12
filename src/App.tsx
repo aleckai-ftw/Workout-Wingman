@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
+import { FloatingTimer } from './components/FloatingTimer';
 import { HomePage } from './pages/HomePage';
 import { TrackPage } from './pages/TrackPage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -35,6 +36,7 @@ function Layout() {
   return (
     <>
       <Outlet />
+      <FloatingTimer />
       <BottomNav />
     </>
   );

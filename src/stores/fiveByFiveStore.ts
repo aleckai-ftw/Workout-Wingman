@@ -11,36 +11,34 @@ import type {
 } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
 
-const KEY = 'ww_5x5_v2';
+const KEY = 'ww_5x5_v3'; // bumped — clean slate; exerciseDb is now shared
 const FAILURE_REPS = 7;
 
-function makeExDef(name: string, weightLbs = 45, numSets = 5): FxFExerciseDef {
-  return {
-    id: crypto.randomUUID(),
-    name,
-    numSets,
-    weightLbs,
-    targetReps: 5,
-    lastWeightLbs: null,
-    lastOutcome: null,
-  };
+function makeExDef(
+  id: string,
+  name: string,
+  weightLbs = 45,
+  numSets = 5,
+): FxFExerciseDef {
+  return { id, name, numSets, weightLbs, targetReps: 5, lastWeightLbs: null, lastOutcome: null };
 }
 
-const DEFAULT_PLAN: FxFPlan = {
-  A: [
-    makeExDef('Squat'),
-    makeExDef('Bench Press'),
-    makeExDef('Barbell Row'),
-  ],
-  B: [
-    makeExDef('Squat'),
-    makeExDef('Overhead Press'),
-    makeExDef('Deadlift', 45, 1),
-  ],
+// Stable IDs — Squat appears in both A & B and shares the same entry
+const DEFAULT_EXERCISE_DB: Record<string, FxFExerciseDef> = {
+  squat:    makeExDef('squat',    'Squat'),
+  bench:    makeExDef('bench',    'Bench Press'),
+  row:      makeExDef('row',      'Barbell Row'),
+  ohp:      makeExDef('ohp',      'Overhead Press'),
+  deadlift: makeExDef('deadlift', 'Deadlift', 45, 1),
 };
 
-function makeSets(numSets: number): FxFSetState[] {
-  return Array.from({ length: numSets }, () => 'pending' as FxFSetState);
+const DEFAULT_PLAN: FxFPlan = {
+  A: ['squat', 'bench', 'row'],
+  B: ['squat', 'ohp', 'deadlift'],
+};
+
+function makeSets(numSets: number) {
+  return Array.from({ length: numSets }, () => ({ state: 'pending' as FxFSetState }));
 }
 
 interface FiveByFiveStore extends FiveByFiveProgram {
@@ -62,6 +60,7 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
   subscribeWithSelector((set, get) => {
     const loaded = loadFromStorage<Partial<FiveByFiveProgram>>(KEY, {});
     const initial: FiveByFiveProgram = {
+      exerciseDb: (loaded as FiveByFiveProgram).exerciseDb ?? DEFAULT_EXERCISE_DB,
       plan: (loaded as FiveByFiveProgram).plan ?? DEFAULT_PLAN,
       sessions: (loaded as FiveByFiveProgram).sessions ?? [],
       activeSessionId: (loaded as FiveByFiveProgram).activeSessionId ?? null,
@@ -72,22 +71,25 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
 
       startSession: (workout) => {
         const state = get();
-        const exDefs = state.plan[workout];
+        const ids = state.plan[workout];
         const id = crypto.randomUUID();
         const session: FxFSession = {
           id,
           workout,
           date: new Date().toISOString(),
-          exercises: exDefs.map((def): FxFSessionExercise => ({
-            defId: def.id,
-            name: def.name,
-            numSets: def.numSets,
-            weightLbs: def.weightLbs,
-            targetReps: def.targetReps,
-            lastWeightLbs: def.lastWeightLbs,
-            lastOutcome: def.lastOutcome,
-            sets: makeSets(def.numSets).map((state) => ({ state })),
-          })),
+          exercises: ids.map((defId): FxFSessionExercise => {
+            const def = state.exerciseDb[defId];
+            return {
+              defId,
+              name: def.name,
+              numSets: def.numSets,
+              weightLbs: def.weightLbs,
+              targetReps: def.targetReps,
+              lastWeightLbs: def.lastWeightLbs,
+              lastOutcome: def.lastOutcome,
+              sets: makeSets(def.numSets),
+            };
+          }),
           completed: false,
         };
         set((s) => {
@@ -144,48 +146,46 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
           const session = s.sessions.find((sess) => sess.id === sessionId);
           if (!session) return s;
 
-          const planUpdates: Record<string, Partial<FxFExerciseDef>> = {};
+          // Update exerciseDb for each exercise in the session
+          const updatedDb = { ...s.exerciseDb };
           session.exercises.forEach((ex) => {
             const failed = ex.sets.some((st) => st.state === 'failed');
             const allDone = ex.sets.every((st) => st.state === 'done');
+            const current = updatedDb[ex.defId];
+            if (!current) return;
+
             if (failed) {
-              planUpdates[ex.defId] = {
+              updatedDb[ex.defId] = {
+                ...current,
                 weightLbs: Math.max(0, ex.weightLbs - 5),
                 targetReps: FAILURE_REPS,
                 lastWeightLbs: ex.weightLbs,
                 lastOutcome: 'failure',
               };
             } else if (allDone) {
-              planUpdates[ex.defId] = {
+              updatedDb[ex.defId] = {
+                ...current,
                 weightLbs: ex.weightLbs + 5,
                 targetReps: 5,
                 lastWeightLbs: ex.weightLbs,
                 lastOutcome: 'success',
               };
             } else {
-              planUpdates[ex.defId] = {
+              updatedDb[ex.defId] = {
+                ...current,
                 lastWeightLbs: ex.weightLbs,
                 lastOutcome: null,
               };
             }
           });
 
-          const applyUpdates = (defs: FxFExerciseDef[]) =>
-            defs.map((def) =>
-              planUpdates[def.id] ? { ...def, ...planUpdates[def.id] } : def,
-            );
-
-          const newPlan: FxFPlan = {
-            A: applyUpdates(s.plan.A),
-            B: applyUpdates(s.plan.B),
-          };
-
           const sessions = s.sessions.map((sess) =>
             sess.id === sessionId ? { ...sess, completed: true } : sess,
           );
 
           const next: FiveByFiveProgram = {
-            plan: newPlan,
+            ...s,
+            exerciseDb: updatedDb,
             sessions,
             activeSessionId: null,
           };
@@ -207,10 +207,12 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
 
       addExerciseToPlan: (workout, name, weightLbs = 45, numSets = 5) =>
         set((s) => {
-          const newDef = makeExDef(name, weightLbs, numSets);
+          const newId = crypto.randomUUID();
+          const newDef = makeExDef(newId, name, weightLbs, numSets);
           const next: FiveByFiveProgram = {
             ...s,
-            plan: { ...s.plan, [workout]: [...s.plan[workout], newDef] },
+            exerciseDb: { ...s.exerciseDb, [newId]: newDef },
+            plan: { ...s.plan, [workout]: [...s.plan[workout], newId] },
           };
           save(next);
           return next;
@@ -222,7 +224,7 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
             ...s,
             plan: {
               ...s.plan,
-              [workout]: s.plan[workout].filter((d) => d.id !== defId),
+              [workout]: s.plan[workout].filter((id) => id !== defId),
             },
           };
           save(next);
@@ -231,14 +233,12 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
 
       setPlanExerciseWeight: (workout, defId, weight) =>
         set((s) => {
+          // Weight lives in exerciseDb, not the plan array
+          const current = s.exerciseDb[defId];
+          if (!current) return s;
           const next: FiveByFiveProgram = {
             ...s,
-            plan: {
-              ...s.plan,
-              [workout]: s.plan[workout].map((d) =>
-                d.id === defId ? { ...d, weightLbs: weight } : d,
-              ),
-            },
+            exerciseDb: { ...s.exerciseDb, [defId]: { ...current, weightLbs: weight } },
           };
           save(next);
           return next;
@@ -246,3 +246,4 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
     };
   }),
 );
+

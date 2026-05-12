@@ -35,13 +35,31 @@ function playTone(
   osc.stop(startTime + duration + 0.05);
 }
 
-/** Short single beep — used for interval alerts during countdown. */
-export function playIntervalAlert(): void {
+/**
+ * Incremental blips — plays `count` short beeps, 250 ms apart.
+ * Called on each interval alert; count increments with each alert.
+ */
+export function playIntervalAlert(count = 1): void {
   const ctx = getAudioContext();
   if (!ctx) return;
-  playTone(ctx, 880, ctx.currentTime, 0.35);
-  // Close context after tone finishes to free resources
-  setTimeout(() => ctx.close(), 600);
+  const now = ctx.currentTime;
+  const gap = 0.25; // seconds between blips
+  for (let i = 0; i < count; i++) {
+    playTone(ctx, 880, now + i * gap, 0.2);
+  }
+  const totalDuration = (count * gap + 0.3) * 1000;
+  setTimeout(() => ctx.close(), totalDuration);
+}
+
+/** Descending fanfare — signals that warm-up has ended and the main timer is starting. */
+export function playWarmupComplete(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  playTone(ctx, 523, now, 0.25);       // C5
+  playTone(ctx, 659, now + 0.25, 0.25); // E5
+  playTone(ctx, 784, now + 0.5, 0.5);  // G5
+  setTimeout(() => ctx.close(), 1500);
 }
 
 /** Ascending 3-tone sequence — used when a countdown completes. */

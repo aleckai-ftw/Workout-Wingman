@@ -1,4 +1,4 @@
-import type { SsDef, SsMuscleGroup } from '../types';
+import type { SsDef, SsExercise, SsMuscleGroup } from '../types';
 
 export interface MuscleGroupMeta {
   label: string;
@@ -22,14 +22,28 @@ export const SS_MUSCLE_GROUPS: SsMuscleGroup[] = [
   'core_glutes',
 ];
 
+/** Stable, deterministic ID from an exercise name */
+export function ssExSlug(name: string): string {
+  return 'ss-ex-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Internal registry — populated as def() is called, used to build BUILT_IN_EXERCISE_DB
+const _exEntries = new Map<string, { name: string; muscleGroup: string }>(); // id → { name, muscleGroup }
+
+function ex(name: string, muscleGroup: string): string {
+  const id = ssExSlug(name);
+  if (!_exEntries.has(id)) _exEntries.set(id, { name, muscleGroup }); // first-seen muscle group wins
+  return id;
+}
+
 function def(
   id: string,
   name: string,
   muscleGroup: SsMuscleGroup,
-  exerciseA: string,
-  exerciseB: string,
+  exerciseAName: string,
+  exerciseBName: string,
 ): SsDef {
-  return { id, name, muscleGroup, exerciseA, exerciseB, isCustom: false };
+  return { id, name, muscleGroup, exerciseAId: ex(exerciseAName, muscleGroup), exerciseBId: ex(exerciseBName, muscleGroup), isCustom: false };
 }
 
 export const BUILT_IN_SS_DEFS: SsDef[] = [
@@ -98,3 +112,15 @@ export const BUILT_IN_SS_DEFS: SsDef[] = [
   // ─── Shoulders / Traps — from CSV ─────────────────────────────────────────
   def('st-06', 'Step-Ups + DB Shoulder Press',      'shoulders_traps', 'Step-Ups',           'DB Shoulder Press'),
 ];
+
+/**
+ * All built-in exercises, deduplicated by name.
+ * An exercise that appears in multiple supersets (e.g. "Face Pull") gets exactly one entry here.
+ * This is seeded into SupersetProgram.exerciseDb on first load.
+ */
+export const BUILT_IN_EXERCISE_DB: Record<string, SsExercise> = Object.fromEntries(
+  Array.from(_exEntries.entries()).map(([id, { name, muscleGroup }]) => [
+    id,
+    { id, name, muscleGroup, weightLbs: 45, lastWeightLbs: null, lastOutcome: null } satisfies SsExercise,
+  ]),
+);
