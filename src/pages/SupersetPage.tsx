@@ -839,7 +839,12 @@ export function SupersetPage() {
   const store = useSupersetStore();
 
   // Tab
-  const [tab, setTab] = useState<'supersets' | 'exercises'>('supersets');
+  const [tab, setTab] = useState<'supersets' | 'exercises' | 'categories'>('supersets');
+
+  // Categories state
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCatLabel, setNewCatLabel] = useState('');
+  const [newCatEmoji, setNewCatEmoji] = useState('💪');
   const [showAddExercise, setShowAddExercise] = useState(false);
 
   // Planning state
@@ -1151,7 +1156,7 @@ export function SupersetPage() {
       {/* Tab toggle */}
       <div className="px-4 pt-3 pb-1 shrink-0">
         <div className="flex bg-[var(--color-surface)] rounded-xl p-1 gap-1">
-          {(['supersets', 'exercises'] as const).map((t) => (
+          {(['supersets', 'exercises', 'categories'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -1161,11 +1166,135 @@ export function SupersetPage() {
                   : 'text-[var(--color-text-muted)]'
               }`}
             >
-              {t === 'supersets' ? 'Supersets' : 'Exercises'}
+              {t === 'supersets' ? 'Supersets' : t === 'exercises' ? 'Exercises' : 'Categories'}
             </button>
           ))}
         </div>
       </div>
+
+      {/* ── Categories tab ── */}
+      {tab === 'categories' && (
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-8 space-y-3">
+          {/* Built-in groups (read-only) */}
+          <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] px-0.5 mb-1">
+            Built-in
+          </p>
+          {SS_MUSCLE_GROUPS.map((mg) => {
+            const meta = MUSCLE_GROUP_META[mg];
+            return (
+              <div
+                key={mg}
+                className="bg-white border border-[var(--color-border)] rounded-xl px-4 py-3 flex items-center gap-3"
+              >
+                <span className="text-xl shrink-0">{meta.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[var(--color-text)]">{meta.label}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{meta.description}</p>
+                </div>
+                <span className="text-xs text-[var(--color-text-muted)] border border-[var(--color-border)] rounded-lg px-2 py-1">
+                  Built-in
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Custom groups */}
+          {store.customMuscleGroups.length > 0 && (
+            <>
+              <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] px-0.5 pt-2">
+                Custom
+              </p>
+              {store.customMuscleGroups.map((g) => (
+                <div
+                  key={g.id}
+                  className="bg-white border border-[var(--color-border)] rounded-xl px-4 py-3 flex items-center gap-3"
+                >
+                  <span className="text-xl shrink-0">{g.emoji}</span>
+                  <p className="text-sm font-semibold text-[var(--color-text)] flex-1 min-w-0 truncate">
+                    {g.label}
+                  </p>
+                  <button
+                    onClick={() => store.removeCustomMuscleGroup(g.id)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-danger)] border border-[var(--color-danger)]/30 shrink-0 active:bg-[var(--color-danger)]/10"
+                    aria-label="Delete category"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                      <path d="M9 6V4h6v2" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Add new category */}
+          {addingCategory ? (
+            <div className="border-2 border-[var(--color-primary)] rounded-xl p-4 space-y-3 mt-2">
+              <p className="text-xs font-semibold text-[var(--color-primary)] uppercase tracking-wide">
+                New Category
+              </p>
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={newCatEmoji}
+                  onChange={(e) => setNewCatEmoji(e.target.value)}
+                  maxLength={2}
+                  placeholder="🏋️"
+                  className="w-14 px-2 py-2.5 rounded-lg border border-[var(--color-border)] text-center text-lg focus:outline-none focus:border-[var(--color-primary)]"
+                />
+                <input
+                  value={newCatLabel}
+                  onChange={(e) => setNewCatLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newCatLabel.trim()) {
+                      store.addCustomMuscleGroup({ label: newCatLabel.trim(), emoji: newCatEmoji.trim() || '💪' });
+                      setAddingCategory(false);
+                      setNewCatLabel('');
+                      setNewCatEmoji('💪');
+                    }
+                  }}
+                  placeholder="e.g. Forearms"
+                  className="flex-1 px-3 py-2.5 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setAddingCategory(false); setNewCatLabel(''); setNewCatEmoji('💪'); }}
+                  className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!newCatLabel.trim()}
+                  onClick={() => {
+                    if (!newCatLabel.trim()) return;
+                    store.addCustomMuscleGroup({ label: newCatLabel.trim(), emoji: newCatEmoji.trim() || '💪' });
+                    setAddingCategory(false);
+                    setNewCatLabel('');
+                    setNewCatEmoji('💪');
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAddingCategory(true)}
+              className="w-full py-3.5 border-2 border-dashed border-[var(--color-primary)]/50 rounded-xl text-sm text-[var(--color-primary)] font-semibold flex items-center justify-center gap-2 mt-2"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Category
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Exercises tab ── */}
       {tab === 'exercises' && (

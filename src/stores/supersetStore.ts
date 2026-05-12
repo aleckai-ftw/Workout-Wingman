@@ -33,6 +33,7 @@ interface SupersetStore extends SupersetProgram {
   addCustomDef: (def: Omit<SsDef, 'id' | 'isCustom'>) => SsDef;
   removeCustomDef: (defId: string) => void;
   addCustomMuscleGroup: (group: Omit<CustomMuscleGroup, 'id'>) => CustomMuscleGroup;
+  removeCustomMuscleGroup: (groupId: string) => void;
   /** Ensure an exercise with this name exists in exerciseDb; returns its ID */
   ensureExercise: (name: string, muscleGroup?: string) => string;
   /** Explicitly add a new standalone exercise */
@@ -277,6 +278,13 @@ export const useSupersetStore = create<SupersetStore>()(
         });
         return newGroup;
       },
+
+      removeCustomMuscleGroup: (groupId) =>
+        set((s) => {
+          const next: SupersetProgram = { ...s, customMuscleGroups: s.customMuscleGroups.filter((g) => g.id !== groupId) };
+          persist(next);
+          return next;
+        }),
 
       addExercise: (name, weightLbs = DEFAULT_WEIGHT, muscleGroup = '') => {
         const id = ssExSlug(name);
