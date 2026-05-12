@@ -110,7 +110,10 @@ function AddExerciseSheet({ onSaved, onClose }: AddExerciseSheetProps) {
     onSaved(ex);
   }
 
-  const allGroups = SS_MUSCLE_GROUPS.map((mg) => ({ id: mg, ...MUSCLE_GROUP_META[mg] }));
+  const allGroups = [
+    ...SS_MUSCLE_GROUPS.map((mg) => ({ id: mg, ...MUSCLE_GROUP_META[mg] })),
+    ...store.customMuscleGroups.map((g) => ({ id: g.id, label: g.label, emoji: g.emoji, description: '' })),
+  ];
 
   return (
     <>
