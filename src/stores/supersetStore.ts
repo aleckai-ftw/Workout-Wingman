@@ -268,7 +268,7 @@ export const useSupersetStore = create<SupersetStore>()(
               weightLbs: newWeightA,
               lastWeightLbs: entry.weightA,
               lastOutcome: outcomeA ?? prevA.lastOutcome,
-              targetReps: tA,
+              targetReps: entry.targetRepsA,
             };
             const prevB = getExercise(newDb, entry.exerciseBId);
             newDb[entry.exerciseBId] = {
@@ -276,7 +276,7 @@ export const useSupersetStore = create<SupersetStore>()(
               weightLbs: newWeightB,
               lastWeightLbs: entry.weightB,
               lastOutcome: outcomeB ?? prevB.lastOutcome,
-              targetReps: tB,
+              targetReps: entry.targetRepsB,
             };
           }
 
