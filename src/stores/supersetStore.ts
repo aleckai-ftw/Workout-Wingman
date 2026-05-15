@@ -308,7 +308,7 @@ export const useSupersetStore = create<SupersetStore>()(
         const id = ssExSlug(name);
         set((s) => {
           if (s.exerciseDb[id]) return s;
-          const newEx: SsExercise = { id, name, muscleGroup, weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null };
+          const newEx: SsExercise = { id, name, muscleGroup, weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
           const next: SupersetProgram = { ...s, exerciseDb: { ...s.exerciseDb, [id]: newEx } };
           persist(next);
           return next;
@@ -324,7 +324,7 @@ export const useSupersetStore = create<SupersetStore>()(
           const dbUpdates: Record<string, SsExercise> = {};
           for (const exId of [newDef.exerciseAId, newDef.exerciseBId]) {
             if (!s.exerciseDb[exId]) {
-              dbUpdates[exId] = { id: exId, name: exId, muscleGroup: newDef.muscleGroup ?? '', weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null };
+              dbUpdates[exId] = { id: exId, name: exId, muscleGroup: newDef.muscleGroup ?? '', weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
             }
           }
           const next: SupersetProgram = {
