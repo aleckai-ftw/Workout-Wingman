@@ -10,6 +10,7 @@ interface CountdownStore {
   warmupSeconds: number;        // 0 = no warm-up
   phase: 'idle' | 'warmup' | 'main';
   intervalId: ReturnType<typeof setInterval> | null;
+  endTime: number | null;       // absolute ms timestamp when current phase ends
 
   start: () => void;
   pause: () => void;
@@ -30,6 +31,7 @@ export const useCountdownStore = create<CountdownStore>()((set, get) => ({
   warmupSeconds: 0,
   phase: 'idle',
   intervalId: null,
+  endTime: null,
 
   start: () => {
     const prev = get().intervalId;
@@ -39,22 +41,25 @@ export const useCountdownStore = create<CountdownStore>()((set, get) => ({
     const id = setInterval(() => get().tick(), 1000);
 
     if (warmupSeconds > 0) {
-      set({ remainingSeconds: warmupSeconds, isRunning: true, intervalId: id, phase: 'warmup', intervalCount: 0 });
+      const endTime = Date.now() + warmupSeconds * 1000;
+      set({ remainingSeconds: warmupSeconds, isRunning: true, intervalId: id, phase: 'warmup', intervalCount: 0, endTime });
     } else {
-      set({ remainingSeconds: durationSeconds, isRunning: true, intervalId: id, phase: 'main', intervalCount: 0 });
+      const endTime = Date.now() + durationSeconds * 1000;
+      set({ remainingSeconds: durationSeconds, isRunning: true, intervalId: id, phase: 'main', intervalCount: 0, endTime });
     }
   },
 
   pause: () => {
     const id = get().intervalId;
     if (id !== null) clearInterval(id);
-    set({ isRunning: false, intervalId: null });
+    set({ isRunning: false, intervalId: null, endTime: null });
   },
 
   resume: () => {
     if (get().isRunning) return;
+    const endTime = Date.now() + get().remainingSeconds * 1000;
     const id = setInterval(() => get().tick(), 1000);
-    set({ isRunning: true, intervalId: id });
+    set({ isRunning: true, intervalId: id, endTime });
   },
 
   reset: () => {
@@ -66,13 +71,14 @@ export const useCountdownStore = create<CountdownStore>()((set, get) => ({
       intervalId: null,
       phase: 'idle',
       intervalCount: 0,
+      endTime: null,
     }));
   },
 
   setDuration: (seconds) => {
     const id = get().intervalId;
     if (id !== null) clearInterval(id);
-    set({ durationSeconds: seconds, remainingSeconds: seconds, isRunning: false, intervalId: null, phase: 'idle', intervalCount: 0 });
+    set({ durationSeconds: seconds, remainingSeconds: seconds, isRunning: false, intervalId: null, phase: 'idle', intervalCount: 0, endTime: null });
   },
 
   setIntervalAlert: (seconds) => {
@@ -85,17 +91,24 @@ export const useCountdownStore = create<CountdownStore>()((set, get) => ({
 
   tick: () =>
     set((s) => {
-      const next = s.remainingSeconds - 1;
+      // Deadline-based: derive remaining from the absolute end timestamp so that
+      // throttled/suspended intervals (screen covered, app backgrounded) self-correct
+      // on the very next tick that does fire.
+      const next = s.endTime !== null
+        ? Math.round((s.endTime - Date.now()) / 1000)
+        : s.remainingSeconds - 1;
 
       // ── Warm-up phase ────────────────────────────────────────────────────
       if (s.phase === 'warmup') {
         if (next <= 0) {
           // Warm-up done — transition to main countdown
           playWarmupComplete();
+          const newEndTime = Date.now() + s.durationSeconds * 1000;
           return {
             remainingSeconds: s.durationSeconds,
             phase: 'main' as const,
             intervalCount: 0,
+            endTime: newEndTime,
           };
         }
         return { remainingSeconds: next };
@@ -105,20 +118,36 @@ export const useCountdownStore = create<CountdownStore>()((set, get) => ({
       if (next <= 0) {
         if (s.intervalId !== null) clearInterval(s.intervalId);
         playCompletionAlarm();
-        return { remainingSeconds: 0, isRunning: false, intervalId: null, phase: 'idle' as const };
+        return { remainingSeconds: 0, isRunning: false, intervalId: null, phase: 'idle' as const, endTime: null };
       }
 
-      // Fire interval alert when remaining is exactly a multiple of the interval
-      if (s.intervalAlertSeconds > 0 && next % s.intervalAlertSeconds === 0) {
-        // Cap blips so total audio duration (blips × 250 ms gap) never exceeds the interval period.
-        // Hard cap of 8 also keeps it sane for very long intervals.
-        const BLIP_GAP = 0.25; // seconds — must match sounds.ts
-        const maxBlips = Math.min(8, Math.max(1, Math.floor(s.intervalAlertSeconds / (BLIP_GAP + 0.05))));
-        const newCount = Math.min(s.intervalCount + 1, maxBlips);
-        playIntervalAlert(newCount);
-        return { remainingSeconds: next, intervalCount: newCount };
+      // Fire interval alert when we cross a multiple of the interval boundary.
+      // Using a boundary-crossing check instead of exact equality so that coarse
+      // ticks (after being hidden) still trigger the alert.
+      if (s.intervalAlertSeconds > 0 && s.remainingSeconds > next) {
+        const prevMultiple = Math.floor(s.remainingSeconds / s.intervalAlertSeconds);
+        const nextMultiple = Math.floor(next / s.intervalAlertSeconds);
+        if (nextMultiple < prevMultiple && next > 0) {
+          const BLIP_GAP = 0.25;
+          const maxBlips = Math.min(8, Math.max(1, Math.floor(s.intervalAlertSeconds / (BLIP_GAP + 0.05))));
+          const newCount = Math.min(s.intervalCount + 1, maxBlips);
+          playIntervalAlert(newCount);
+          return { remainingSeconds: next, intervalCount: newCount };
+        }
       }
 
       return { remainingSeconds: next };
     }),
 }));
+
+// When the page becomes visible again after being hidden (phone uncovered, app
+// foregrounded) immediately fire a tick so the display snaps to the correct time
+// and completion fires promptly if the timer expired while hidden.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const state = useCountdownStore.getState();
+      if (state.isRunning) state.tick();
+    }
+  });
+}
