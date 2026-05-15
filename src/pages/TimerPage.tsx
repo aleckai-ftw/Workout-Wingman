@@ -131,22 +131,27 @@ function MinSecInput({
       <p className="text-sm font-medium text-[var(--color-text-muted)] mb-2">{label}</p>
       <div className="flex items-center gap-2">
         <input
-          type="number"
-          min={0}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={mins}
-          onChange={(e) => setMins(e.target.value)}
+          onChange={(e) => setMins(e.target.value.replace(/[^0-9]/g, ''))}
+          onFocus={(e) => e.target.select()}
           onBlur={() => commit(mins, secs)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           className="w-16 px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm text-center focus:outline-none focus:border-[var(--color-primary)]"
           placeholder="mm"
         />
         <span className="text-[var(--color-text-muted)] font-bold">:</span>
         <input
-          type="number"
-          min={0}
-          max={59}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={secs}
-          onChange={(e) => setSecs(e.target.value)}
+          onChange={(e) => setSecs(e.target.value.replace(/[^0-9]/g, ''))}
+          onFocus={(e) => e.target.select()}
           onBlur={() => commit(mins, secs)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           className="w-16 px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm text-center focus:outline-none focus:border-[var(--color-primary)]"
           placeholder="ss"
         />
@@ -248,14 +253,17 @@ function RestTab() {
           <p className="text-xs text-[var(--color-text-muted)] mb-2">Starting rest (seconds)</p>
           <div className="flex gap-2">
             <input
-              type="number"
-              min={1}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={customRestInput}
-              onChange={(e) => setCustomRestInput(e.target.value)}
+              onChange={(e) => setCustomRestInput(e.target.value.replace(/[^0-9]/g, ''))}
+              onFocus={(e) => e.target.select()}
               onBlur={(e) => {
                 const v = parseInt(e.target.value, 10);
                 if (!isNaN(v) && v > 0) timer.setDuration(v);
               }}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
               className="flex-1 px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
             <button
@@ -275,27 +283,32 @@ function RestTab() {
           <div className="flex-1">
             <p className="text-xs text-[var(--color-text-muted)] mb-2">+Seconds per set</p>
             <input
-              type="number"
-              min={0}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={timer.incrementSeconds}
               onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
+                const v = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10);
                 if (!isNaN(v) && v >= 0) timer.setIncrement(v);
               }}
+              onFocus={(e) => e.target.select()}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
               className="w-full px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
           <div className="flex-1">
             <p className="text-xs text-[var(--color-text-muted)] mb-2">Total sets</p>
             <input
-              type="number"
-              min={1}
-              max={20}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={timer.totalSets}
               onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
+                const v = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10);
                 if (!isNaN(v) && v >= 1) timer.setTotalSets(v);
               }}
+              onFocus={(e) => e.target.select()}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
               className="w-full px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>

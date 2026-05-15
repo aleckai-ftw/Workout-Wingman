@@ -14,6 +14,8 @@ interface TimerStore {
   totalSets: number;
   currentSet: number;
 
+  readyToStart: boolean; // reset to set 1, waiting for user to press play
+
   start: (seconds?: number, label?: string, isFirstSet?: boolean) => void;
   pause: () => void;
   resume: () => void;
@@ -32,6 +34,7 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
   isRunning: false,
   label: 'Rest Timer',
   intervalId: null,
+  readyToStart: false,
 
   // Progressive rest defaults
   baseRestSeconds: 90,
@@ -51,6 +54,7 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
       isRunning: true,
       label: label ?? 'Rest Timer',
       intervalId: id,
+      readyToStart: false,
       baseRestSeconds: isFirstSet ? dur : s.baseRestSeconds,
       currentSet: isFirstSet ? 1 : s.currentSet,
     }));
@@ -134,6 +138,7 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
       remainingSeconds: s.baseRestSeconds,
       isRunning: false,
       intervalId: null,
+      readyToStart: true,
     }));
   },
 

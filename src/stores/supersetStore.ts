@@ -8,6 +8,8 @@ import type {
   SsSession,
   SsSetState,
   CustomMuscleGroup,
+  SsWorkoutTemplate,
+  SsWorkoutTemplateEntry,
 } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
 import { BUILT_IN_EXERCISE_DB, ssExSlug } from '../data/supersets';
@@ -26,7 +28,10 @@ interface StartEntry {
 
 interface SupersetStore extends SupersetProgram {
   startSession: (entries: StartEntry[]) => void;
+  /** Cycle pending → done → failed for one side of one set */
   toggleSetState: (sessionId: string, entryIdx: number, setIdx: number, side: 'A' | 'B') => void;
+  /** Adjust target reps for one exercise side in the active session (also persists to exerciseDb) */
+  adjustTargetReps: (sessionId: string, entryIdx: number, side: 'A' | 'B', delta: number) => void;
   adjustWeight: (sessionId: string, entryIdx: number, side: 'A' | 'B', delta: number) => void;
   completeSession: (sessionId: string) => void;
   cancelSession: (sessionId: string) => void;
@@ -37,9 +42,19 @@ interface SupersetStore extends SupersetProgram {
   /** Ensure an exercise with this name exists in exerciseDb; returns its ID */
   ensureExercise: (name: string, muscleGroup?: string) => string;
   /** Explicitly add a new standalone exercise */
-  addExercise: (name: string, weightLbs?: number, muscleGroup?: string) => SsExercise;
-  /** Set the weight for an exercise in the db */
+  addExercise: (name: string, weightLbs?: number, muscleGroup?: string, targetReps?: number) => SsExercise;
+  /** Adjust the weight for an exercise in the db */
   updateExerciseWeight: (id: string, delta: number) => void;
+  /** Adjust the target reps for an exercise in the db */
+  updateExerciseTargetReps: (id: string, delta: number) => void;
+  /** Swap an entry in the active session for a different superset */
+  swapSessionEntry: (sessionId: string, entryIdx: number, newEntry: StartEntry) => void;
+  /** Save the current slot plan as a named template */
+  saveWorkoutTemplate: (title: string, entries: SsWorkoutTemplateEntry[]) => SsWorkoutTemplate;
+  /** Delete a saved workout template */
+  deleteWorkoutTemplate: (id: string) => void;
+  /** Rename a saved workout template */
+  renameWorkoutTemplate: (id: string, title: string) => void;
 }
 
 function persist(state: SupersetProgram) {
@@ -52,8 +67,14 @@ function nextSetState(s: SsSetState): SsSetState {
   return 'pending';
 }
 
+function deriveSetState(reps: number, target: number): SsSetState {
+  if (reps === 0) return 'pending';
+  if (reps >= target) return 'done';
+  return 'failed';
+}
+
 function getExercise(db: Record<string, SsExercise>, id: string): SsExercise {
-  return db[id] ?? { id, name: id, muscleGroup: '', weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null };
+  return db[id] ?? { id, name: id, muscleGroup: '', weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
 }
 
 export const useSupersetStore = create<SupersetStore>()(
@@ -68,17 +89,43 @@ export const useSupersetStore = create<SupersetStore>()(
       mergedDb[id] = {
         ...(BUILT_IN_EXERCISE_DB[id] ?? {}),
         ...saved,
-        // backfill muscleGroup if the saved entry is missing it
         muscleGroup: saved.muscleGroup || BUILT_IN_EXERCISE_DB[id]?.muscleGroup || '',
+        targetReps: saved.targetReps ?? BUILT_IN_EXERCISE_DB[id]?.targetReps ?? 10,
       } as SsExercise;
     }
+
+    // Migrate old session format: repsA/repsB → stateA/stateB, backfill targetRepsA/B
+    const rawSessions = (loaded as SupersetProgram).sessions ?? [];
+    const migratedSessions: SsSession[] = rawSessions.map((session) => ({
+      ...session,
+      entries: session.entries.map((entry) => {
+        const tA = (entry as any).targetRepsA ?? 10;
+        const tB = (entry as any).targetRepsB ?? 10;
+        return {
+          ...entry,
+          targetRepsA: tA,
+          targetRepsB: tB,
+          sets: entry.sets.map((st) => {
+            const s = st as any;
+            // Already new stateA/stateB format
+            if (s.stateA !== undefined) return st;
+            // Migrate from repsA/repsB format
+            return {
+              stateA: deriveSetState(s.repsA ?? 0, tA),
+              stateB: deriveSetState(s.repsB ?? 0, tB),
+            };
+          }),
+        };
+      }),
+    }));
 
     const initial: SupersetProgram = {
       exerciseDb: mergedDb,
       customDefs: (loaded as SupersetProgram).customDefs ?? [],
       customMuscleGroups: (loaded as SupersetProgram).customMuscleGroups ?? [],
-      sessions: (loaded as SupersetProgram).sessions ?? [],
+      sessions: migratedSessions,
       activeSessionId: (loaded as SupersetProgram).activeSessionId ?? null,
+      workoutTemplates: (loaded as SupersetProgram).workoutTemplates ?? [],
     };
 
     return {
@@ -111,6 +158,8 @@ export const useSupersetStore = create<SupersetStore>()(
             lastWeightB: exB.lastWeightLbs,
             lastOutcomeA: exA.lastOutcome,
             lastOutcomeB: exB.lastOutcome,
+            targetRepsA: exA.targetReps ?? 10,
+            targetRepsB: exB.targetReps ?? 10,
             sets: makeSets(e.numSets),
           };
         });
@@ -149,6 +198,32 @@ export const useSupersetStore = create<SupersetStore>()(
             return { ...session, entries };
           });
           const next: SupersetProgram = { ...s, sessions };
+          persist(next);
+          return next;
+        }),
+
+      adjustTargetReps: (sessionId, entryIdx, side, delta) =>
+        set((s) => {
+          const session = s.sessions.find((ss) => ss.id === sessionId);
+          if (!session) return s;
+          const entry = session.entries[entryIdx];
+          if (!entry) return s;
+          const exId = side === 'A' ? entry.exerciseAId : entry.exerciseBId;
+          const currentTarget = side === 'A' ? entry.targetRepsA : entry.targetRepsB;
+          const newTarget = Math.max(1, currentTarget + delta);
+          const sessions = s.sessions.map((ss) => {
+            if (ss.id !== sessionId) return ss;
+            const entries = ss.entries.map((e, ei) => {
+              if (ei !== entryIdx) return e;
+              return side === 'A' ? { ...e, targetRepsA: newTarget } : { ...e, targetRepsB: newTarget };
+            });
+            return { ...ss, entries };
+          });
+          const ex = s.exerciseDb[exId];
+          const newDb = ex
+            ? { ...s.exerciseDb, [exId]: { ...ex, targetReps: newTarget } }
+            : s.exerciseDb;
+          const next: SupersetProgram = { ...s, sessions, exerciseDb: newDb };
           persist(next);
           return next;
         }),
@@ -193,6 +268,7 @@ export const useSupersetStore = create<SupersetStore>()(
               weightLbs: newWeightA,
               lastWeightLbs: entry.weightA,
               lastOutcome: outcomeA ?? prevA.lastOutcome,
+              targetReps: tA,
             };
             const prevB = getExercise(newDb, entry.exerciseBId);
             newDb[entry.exerciseBId] = {
@@ -200,6 +276,7 @@ export const useSupersetStore = create<SupersetStore>()(
               weightLbs: newWeightB,
               lastWeightLbs: entry.weightB,
               lastOutcome: outcomeB ?? prevB.lastOutcome,
+              targetReps: tB,
             };
           }
 
@@ -286,11 +363,11 @@ export const useSupersetStore = create<SupersetStore>()(
           return next;
         }),
 
-      addExercise: (name, weightLbs = DEFAULT_WEIGHT, muscleGroup = '') => {
+      addExercise: (name, weightLbs = DEFAULT_WEIGHT, muscleGroup = '', targetReps = 10) => {
         const id = ssExSlug(name);
         const existing = get().exerciseDb[id];
         if (existing) return existing;
-        const newEx: SsExercise = { id, name, muscleGroup, weightLbs, lastWeightLbs: null, lastOutcome: null };
+        const newEx: SsExercise = { id, name, muscleGroup, weightLbs, lastWeightLbs: null, lastOutcome: null, targetReps };
         set((s) => {
           const next: SupersetProgram = { ...s, exerciseDb: { ...s.exerciseDb, [id]: newEx } };
           persist(next);
@@ -306,6 +383,93 @@ export const useSupersetStore = create<SupersetStore>()(
           const next: SupersetProgram = {
             ...s,
             exerciseDb: { ...s.exerciseDb, [id]: { ...ex, weightLbs: Math.max(0, ex.weightLbs + delta) } },
+          };
+          persist(next);
+          return next;
+        }),
+
+      updateExerciseTargetReps: (id, delta) =>
+        set((s) => {
+          const ex = s.exerciseDb[id];
+          if (!ex) return s;
+          const next: SupersetProgram = {
+            ...s,
+            exerciseDb: { ...s.exerciseDb, [id]: { ...ex, targetReps: Math.max(1, (ex.targetReps ?? 10) + delta) } },
+          };
+          persist(next);
+          return next;
+        }),
+
+      swapSessionEntry: (sessionId, entryIdx, newEntry) =>
+        set((s) => {
+          const db = s.exerciseDb;
+          const exA = getExercise(db, newEntry.exerciseAId);
+          const exB = getExercise(db, newEntry.exerciseBId);
+          const makeSets = (n: number) =>
+            Array.from({ length: n }, () => ({
+              stateA: 'pending' as SsSetState,
+              stateB: 'pending' as SsSetState,
+            }));
+          const newEntryData: SsSessionEntry = {
+            defId: newEntry.defId,
+            name: newEntry.defName,
+            muscleGroup: newEntry.muscleGroup,
+            exerciseAId: newEntry.exerciseAId,
+            exerciseBId: newEntry.exerciseBId,
+            exerciseAName: exA.name,
+            exerciseBName: exB.name,
+            numSets: newEntry.numSets,
+            weightA: exA.weightLbs,
+            weightB: exB.weightLbs,
+            lastWeightA: exA.lastWeightLbs,
+            lastWeightB: exB.lastWeightLbs,
+            lastOutcomeA: exA.lastOutcome,
+            lastOutcomeB: exB.lastOutcome,
+            targetRepsA: exA.targetReps ?? 10,
+            targetRepsB: exB.targetReps ?? 10,
+            sets: makeSets(newEntry.numSets),
+          };
+          const sessions = s.sessions.map((session) => {
+            if (session.id !== sessionId) return session;
+            const entries = session.entries.map((entry, ei) =>
+              ei !== entryIdx ? entry : newEntryData,
+            );
+            return { ...session, entries };
+          });
+          const next: SupersetProgram = { ...s, sessions };
+          persist(next);
+          return next;
+        }),
+
+      saveWorkoutTemplate: (title, entries) => {
+        const template: SsWorkoutTemplate = {
+          id: crypto.randomUUID(),
+          title: title.trim() || 'My Workout',
+          createdAt: new Date().toISOString(),
+          entries,
+        };
+        set((s) => {
+          const next: SupersetProgram = { ...s, workoutTemplates: [...s.workoutTemplates, template] };
+          persist(next);
+          return next;
+        });
+        return template;
+      },
+
+      deleteWorkoutTemplate: (id) =>
+        set((s) => {
+          const next: SupersetProgram = { ...s, workoutTemplates: s.workoutTemplates.filter((t) => t.id !== id) };
+          persist(next);
+          return next;
+        }),
+
+      renameWorkoutTemplate: (id, title) =>
+        set((s) => {
+          const next: SupersetProgram = {
+            ...s,
+            workoutTemplates: s.workoutTemplates.map((t) =>
+              t.id === id ? { ...t, title: title.trim() || t.title } : t,
+            ),
           };
           persist(next);
           return next;

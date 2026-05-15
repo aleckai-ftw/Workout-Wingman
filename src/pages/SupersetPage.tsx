@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useSupersetStore } from '../stores/supersetStore';
+import { useTimerStore } from '../stores/timerStore';
 import { BUILT_IN_SS_DEFS, SS_MUSCLE_GROUPS, MUSCLE_GROUP_META } from '../data/supersets';
-import type { SsDef, SsExercise, SsMuscleGroup, SsSetState, CustomMuscleGroup } from '../types';
+import type { SsDef, SsExercise, SsMuscleGroup, SsSetState, CustomMuscleGroup, SsWorkoutTemplateEntry } from '../types';
 
 // ─── Meta helper (handles both built-in and custom groups) ───────────────────
 
@@ -16,23 +17,78 @@ function getMeta(
   return { label: mg, emoji: '💪', description: '' };
 }
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
+// ─── Set toggle circle ───────────────────────────────────────────────────────────────
+// Cycles: pending (empty) → done (✅ green) → failed (❌ red) → pending
 
-function CheckIcon() {
+function SetCircle({ state, onToggle }: { state: SsSetState; onToggle: () => void }) {
+  const base = 'w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all active:scale-95';
+  if (state === 'done')
+    return (
+      <button onClick={onToggle} className={`${base} bg-[var(--color-success)] border-[var(--color-success)]`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-4 h-4">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </button>
+    );
+  if (state === 'failed')
+    return (
+      <button onClick={onToggle} className={`${base} bg-[var(--color-danger)] border-[var(--color-danger)]`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-4 h-4">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    );
+  return <button onClick={onToggle} className={`${base} border-[var(--color-border)] bg-white`} />;
+}
+
+// ─── Tap-to-type numeric input ────────────────────────────────────────────────
+// Shows as a text input styled to match surrounding content.
+// Selects-all on focus for easy retyping; syncs from parent while unfocused.
+
+function NumericInput({
+  value,
+  onCommit,
+  min = 0,
+  className = '',
+}: {
+  value: number;
+  onCommit: (v: number) => void;
+  min?: number;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const parsed = parseInt(draft, 10);
+    if (!isNaN(parsed) && parsed >= min) onCommit(parsed);
+    else setDraft(String(value));
+    setFocused(false);
+  }
+
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-3.5 h-3.5">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+      onFocus={(e) => { setFocused(true); e.target.select(); }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+        if (e.key === 'Escape') { setDraft(String(value)); (e.target as HTMLInputElement).blur(); }
+      }}
+      className={className}
+    />
   );
 }
 
-function XIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-3.5 h-3.5">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
+// ─── Chevron ──────────────────────────────────────────────────────────────────
 
 function ChevronDown({ flipped }: { flipped: boolean }) {
   return (
@@ -48,27 +104,7 @@ function ChevronDown({ flipped }: { flipped: boolean }) {
   );
 }
 
-// ─── Set circle ───────────────────────────────────────────────────────────────
-
-function SetCircle({ state, onToggle }: { state: SsSetState; onToggle: () => void }) {
-  const base =
-    'w-11 h-11 rounded-full border-2 flex items-center justify-center transition-all active:scale-95';
-  if (state === 'done')
-    return (
-      <button onClick={onToggle} className={`${base} bg-[var(--color-success)] border-[var(--color-success)]`}>
-        <CheckIcon />
-      </button>
-    );
-  if (state === 'failed')
-    return (
-      <button onClick={onToggle} className={`${base} bg-[var(--color-danger)] border-[var(--color-danger)]`}>
-        <XIcon />
-      </button>
-    );
-  return <button onClick={onToggle} className={`${base} border-[var(--color-border)] bg-white`} />;
-}
-
-// ─── Suggestion algorithm ────────────────────────────────────────────────────
+// ─── Suggestion algorithm ─────────────────────────────────────────────────────
 // Picks one def per muscle group, preferring exercises not used in the last two
 // sessions. Uses the current date as a seed so the suggestion changes day-to-day.
 
@@ -100,13 +136,14 @@ function AddExerciseSheet({ onSaved, onClose }: AddExerciseSheetProps) {
   const store = useSupersetStore();
   const [name, setName] = useState('');
   const [weight, setWeight] = useState(45);
+  const [targetReps, setTargetReps] = useState(10);
   const [muscleGroup, setMuscleGroup] = useState<string>('chest_back');
 
   const canSave = name.trim().length > 0;
 
   function handleSave() {
     if (!canSave) return;
-    const ex = store.addExercise(name.trim(), weight, muscleGroup);
+    const ex = store.addExercise(name.trim(), weight, muscleGroup, targetReps);
     onSaved(ex);
   }
 
@@ -188,12 +225,46 @@ function AddExerciseSheet({ onSaved, onClose }: AddExerciseSheetProps) {
               >
                 −
               </button>
-              <div className="flex-1 text-center">
-                <span className="text-3xl font-bold text-[var(--color-text)]">{weight}</span>
-                <span className="text-sm text-[var(--color-text-muted)] ml-1">lbs</span>
+              <div className="flex-1 flex items-center justify-center gap-1">
+                <NumericInput
+                  value={weight}
+                  onCommit={(v) => setWeight(v)}
+                  min={0}
+                  className="w-16 text-center text-3xl font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                />
+                <span className="text-sm text-[var(--color-text-muted)]">lbs</span>
               </div>
               <button
                 onClick={() => setWeight((w) => w + 5)}
+                className="w-11 h-11 rounded-full bg-[var(--color-primary)] text-white text-xl font-bold flex items-center justify-center"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+              Target Reps
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setTargetReps((r) => Math.max(1, r - 1))}
+                className="w-11 h-11 rounded-full border-2 border-[var(--color-border)] text-xl font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+              >
+                −
+              </button>
+              <div className="flex-1 flex items-center justify-center gap-1">
+                <NumericInput
+                  value={targetReps}
+                  onCommit={(v) => setTargetReps(Math.max(1, v))}
+                  min={1}
+                  className="w-16 text-center text-3xl font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                />
+                <span className="text-sm text-[var(--color-text-muted)]">reps</span>
+              </div>
+              <button
+                onClick={() => setTargetReps((r) => r + 1)}
                 className="w-11 h-11 rounded-full bg-[var(--color-primary)] text-white text-xl font-bold flex items-center justify-center"
               >
                 +
@@ -312,9 +383,14 @@ function ExercisePicker({ label, exerciseDb, onSelect, onBack, addExercise, musc
                   >
                     −
                   </button>
-                  <div className="flex-1 text-center">
-                    <span className="text-xl font-bold text-[var(--color-text)]">{creatingWeight}</span>
-                    <span className="text-xs text-[var(--color-text-muted)] ml-1">lbs</span>
+                  <div className="flex-1 flex items-center justify-center gap-1">
+                    <NumericInput
+                      value={creatingWeight}
+                      onCommit={(v) => setCreatingWeight(v)}
+                      min={0}
+                      className="w-14 text-center text-xl font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                    />
+                    <span className="text-xs text-[var(--color-text-muted)]">lbs</span>
                   </div>
                   <button
                     onClick={() => setCreatingWeight((w) => w + 5)}
@@ -836,13 +912,106 @@ function SearchSheet({
   );
 }
 
+// ─── Template rename row ─────────────────────────────────────────────────────
+
+function TemplateRenameRow({
+  template,
+  onSave,
+  onCancel,
+}: {
+  template: { id: string; title: string };
+  onSave: (title: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(template.title);
+  return (
+    <div className="px-4 py-3 flex items-center gap-2">
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onSave(value);
+          if (e.key === 'Escape') onCancel();
+        }}
+        className="flex-1 px-3 py-1.5 rounded-xl border border-[var(--color-primary)] text-sm focus:outline-none"
+      />
+      <button
+        onClick={() => onSave(value)}
+        disabled={!value.trim()}
+        className="px-3 py-1.5 rounded-xl bg-[var(--color-primary)] text-white text-xs font-bold disabled:opacity-40"
+      >
+        Save
+      </button>
+      <button onClick={onCancel} className="text-xs text-[var(--color-text-muted)]">
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+// ─── Save Workout Template sheet ─────────────────────────────────────────────
+
+function SaveTemplateSheet({
+  onSave,
+  onClose,
+}: {
+  onSave: (title: string) => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/60 z-[65]" onClick={onClose} />
+      <div
+        className="fixed left-1/2 -translate-x-1/2 z-[70] bg-white rounded-t-3xl flex flex-col w-full"
+        style={{ bottom: 64, maxHeight: '60vh', maxWidth: 480, boxShadow: '0 -8px 40px rgba(0,0,0,0.18)' }}
+      >
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </div>
+        <div className="px-4 pt-1 pb-3 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between">
+          <button onClick={onClose} className="text-sm text-[var(--color-text-muted)]">Cancel</button>
+          <h3 className="font-bold text-[var(--color-text)] text-lg">Save Workout</h3>
+          <button
+            onClick={() => onSave(title)}
+            disabled={!title.trim()}
+            className="text-sm font-semibold text-[var(--color-primary)] disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+        <div className="px-4 py-6 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+              Workout Name
+            </label>
+            <input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && title.trim() && onSave(title)}
+              placeholder="e.g. Push Day, Monday Routine…"
+              className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Saves the current superset selection and set counts so you can load this exact workout anytime.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function SupersetPage() {
   const store = useSupersetStore();
+  const timer = useTimerStore();
 
   // Tab
-  const [tab, setTab] = useState<'supersets' | 'exercises' | 'categories'>('supersets');
+  const [tab, setTab] = useState<'supersets' | 'saved' | 'exercises' | 'categories'>('supersets');
 
   // Categories state
   const [addingCategory, setAddingCategory] = useState(false);
@@ -856,9 +1025,12 @@ export function SupersetPage() {
   const [openSlot, setOpenSlot] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [suggestedDismissed, setSuggestedDismissed] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // Active session accordion
   const [expandedIdx, setExpandedIdx] = useState<number>(0);
+  const [swappingEntryIdx, setSwappingEntryIdx] = useState<number | null>(null);
 
   const activeSession = store.sessions.find(
     (s) => s.id === store.activeSessionId && !s.completed,
@@ -924,6 +1096,31 @@ export function SupersetPage() {
     setExpandedIdx(0);
   }
 
+  // ─── Memos needed by both views (must be above early return to obey Rules of Hooks) ──────────
+
+  const sortedExercises = useMemo(
+    () => Object.values(store.exerciseDb).sort((a, b) => a.name.localeCompare(b.name)),
+    [store.exerciseDb],
+  );
+
+  const exercisesByGroup = useMemo(() => {
+    const byGroup = new Map<string, SsExercise[]>();
+    for (const ex of sortedExercises) {
+      const g = ex.muscleGroup || '__none__';
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g)!.push(ex);
+    }
+    const orderedGroups = [
+      ...SS_MUSCLE_GROUPS.filter((g) => byGroup.has(g)),
+      ...(byGroup.has('__none__') ? ['__none__'] : []),
+    ];
+    return orderedGroups.map((g) => ({
+      groupId: g,
+      label: g === '__none__' ? 'Uncategorised' : `${MUSCLE_GROUP_META[g as SsMuscleGroup]?.emoji ?? ''} ${MUSCLE_GROUP_META[g as SsMuscleGroup]?.label ?? g}`,
+      exercises: byGroup.get(g)!,
+    }));
+  }, [sortedExercises]);
+
   // ─── Active session view ──────────────────────────────────────────────────
 
   if (activeSession) {
@@ -954,13 +1151,14 @@ export function SupersetPage() {
                     : 'border-[var(--color-border)]'
                 }`}
               >
-                {/* Accordion header */}
-                <button
-                  onClick={() => setExpandedIdx(isOpen ? -1 : ei)}
-                  className="w-full px-4 py-3.5 flex items-center gap-3 text-left"
-                >
-                  <span className="text-xl shrink-0">{meta.emoji}</span>
-                  <div className="flex-1 min-w-0">
+                {/* Accordion header — split into two divs to avoid nested <button> */}
+                <div className="w-full flex items-center gap-3 text-left">
+                  <button
+                    onClick={() => setExpandedIdx(isOpen ? -1 : ei)}
+                    className="flex-1 flex items-center gap-3 px-4 py-3.5 text-left min-w-0"
+                  >
+                    <span className="text-xl shrink-0">{meta.emoji}</span>
+                    <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-[var(--color-text)] truncate">
                       {entry.name}
                     </p>
@@ -985,8 +1183,27 @@ export function SupersetPage() {
                       />
                     ))}
                   </div>
-                  <ChevronDown flipped={isOpen} />
-                </button>
+                  </button>
+                  {/* Swap button */}
+                  <button
+                    onClick={() => setSwappingEntryIdx(ei)}
+                    className="w-8 h-8 mx-1 shrink-0 flex items-center justify-center rounded-full border-2 border-[var(--color-border)] text-[var(--color-text-muted)] active:border-[var(--color-primary)] active:text-[var(--color-primary)]"
+                    title="Swap superset"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                      <polyline points="17 1 21 5 17 9" />
+                      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                      <polyline points="7 23 3 19 7 15" />
+                      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setExpandedIdx(isOpen ? -1 : ei)}
+                    className="pr-4 py-3.5 flex items-center shrink-0"
+                  >
+                    <ChevronDown flipped={isOpen} />
+                  </button>
+                </div>
 
                 {/* Expanded body */}
                 {isOpen && (
@@ -1013,15 +1230,40 @@ export function SupersetPage() {
                         >
                           −
                         </button>
-                        <div className="flex-1 text-center">
-                          <span className="text-3xl font-bold text-[var(--color-text)]">
-                            {entry.weightA}
-                          </span>
-                          <span className="text-sm text-[var(--color-text-muted)] ml-1">lbs</span>
+                        <div className="flex-1 flex items-center justify-center gap-1">
+                          <NumericInput
+                            value={entry.weightA}
+                            onCommit={(v) => store.adjustWeight(activeSession.id, ei, 'A', v - entry.weightA)}
+                            min={0}
+                            className="w-16 text-center text-3xl font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                          />
+                          <span className="text-sm text-[var(--color-text-muted)]">lbs</span>
                         </div>
                         <button
                           onClick={() => store.adjustWeight(activeSession.id, ei, 'A', 5)}
                           className="w-10 h-10 rounded-full bg-[var(--color-primary)] text-white text-xl font-bold flex items-center justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 pl-8 mt-2.5">
+                        <span className="text-xs text-[var(--color-text-muted)] flex-1">Target reps</span>
+                        <button
+                          onClick={() => store.adjustTargetReps(activeSession.id, ei, 'A', -1)}
+                          className="w-7 h-7 rounded-full border-2 border-[var(--color-border)] text-sm font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+                        >
+                          −
+                        </button>
+                        <NumericInput
+                          value={entry.targetRepsA}
+                          onCommit={(v) => store.adjustTargetReps(activeSession.id, ei, 'A', v - entry.targetRepsA)}
+                          min={1}
+                          className="w-8 text-center text-sm font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                        />
+                        <span className="text-xs text-[var(--color-text-muted)]">reps</span>
+                        <button
+                          onClick={() => store.adjustTargetReps(activeSession.id, ei, 'A', 1)}
+                          className="w-7 h-7 rounded-full bg-[var(--color-primary)] text-white text-sm font-bold flex items-center justify-center"
                         >
                           +
                         </button>
@@ -1050,11 +1292,14 @@ export function SupersetPage() {
                         >
                           −
                         </button>
-                        <div className="flex-1 text-center">
-                          <span className="text-3xl font-bold text-[var(--color-text)]">
-                            {entry.weightB}
-                          </span>
-                          <span className="text-sm text-[var(--color-text-muted)] ml-1">lbs</span>
+                        <div className="flex-1 flex items-center justify-center gap-1">
+                          <NumericInput
+                            value={entry.weightB}
+                            onCommit={(v) => store.adjustWeight(activeSession.id, ei, 'B', v - entry.weightB)}
+                            min={0}
+                            className="w-16 text-center text-3xl font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                          />
+                          <span className="text-sm text-[var(--color-text-muted)]">lbs</span>
                         </div>
                         <button
                           onClick={() => store.adjustWeight(activeSession.id, ei, 'B', 5)}
@@ -1063,17 +1308,39 @@ export function SupersetPage() {
                           +
                         </button>
                       </div>
+                      <div className="flex items-center gap-2 pl-8 mt-2.5">
+                        <span className="text-xs text-[var(--color-text-muted)] flex-1">Target reps</span>
+                        <button
+                          onClick={() => store.adjustTargetReps(activeSession.id, ei, 'B', -1)}
+                          className="w-7 h-7 rounded-full border-2 border-[var(--color-border)] text-sm font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+                        >
+                          −
+                        </button>
+                        <NumericInput
+                          value={entry.targetRepsB}
+                          onCommit={(v) => store.adjustTargetReps(activeSession.id, ei, 'B', v - entry.targetRepsB)}
+                          min={1}
+                          className="w-8 text-center text-sm font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                        />
+                        <span className="text-xs text-[var(--color-text-muted)]">reps</span>
+                        <button
+                          onClick={() => store.adjustTargetReps(activeSession.id, ei, 'B', 1)}
+                          className="w-7 h-7 rounded-full bg-[var(--color-primary)] text-white text-sm font-bold flex items-center justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Set circles — A and B side by side per row */}
+                    {/* Set toggle circles — A and B side by side per row */}
                     <div className="px-4 py-4 space-y-3">
                       <div className="grid grid-cols-[28px_1fr_1fr] items-center gap-2 text-center">
                         <div />
                         <p className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">
-                          A
+                          A · {entry.targetRepsA} reps
                         </p>
                         <p className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-widest">
-                          B
+                          B · {entry.targetRepsB} reps
                         </p>
                       </div>
                       {entry.sets.map((st, si) => (
@@ -1084,17 +1351,33 @@ export function SupersetPage() {
                           <div className="flex justify-center">
                             <SetCircle
                               state={st.stateA}
-                              onToggle={() =>
-                                store.toggleSetState(activeSession.id, ei, si, 'A')
-                              }
+                              onToggle={() => {
+                                const wasA = st.stateA;
+                                store.toggleSetState(activeSession.id, ei, si, 'A');
+                                // Fire timer if this completes the pair (A was pending, B already done/failed)
+                                if (wasA === 'pending' && st.stateB !== 'pending') {
+                                  const isBetween = !timer.isRunning && timer.remainingSeconds === 0 && timer.currentSet < timer.totalSets;
+                                  if (timer.isRunning) { /* let it run */ }
+                                  else if (isBetween) { timer.startNextSet(); }
+                                  else { timer.start(timer.baseRestSeconds, 'Superset Rest', true); }
+                                }
+                              }}
                             />
                           </div>
                           <div className="flex justify-center">
                             <SetCircle
                               state={st.stateB}
-                              onToggle={() =>
-                                store.toggleSetState(activeSession.id, ei, si, 'B')
-                              }
+                              onToggle={() => {
+                                const wasB = st.stateB;
+                                store.toggleSetState(activeSession.id, ei, si, 'B');
+                                // Fire timer if this completes the pair (B was pending, A already done/failed)
+                                if (wasB === 'pending' && st.stateA !== 'pending') {
+                                  const isBetween = !timer.isRunning && timer.remainingSeconds === 0 && timer.currentSet < timer.totalSets;
+                                  if (timer.isRunning) { /* let it run */ }
+                                  else if (isBetween) { timer.startNextSet(); }
+                                  else { timer.start(timer.baseRestSeconds, 'Superset Rest', true); }
+                                }
+                              }}
                             />
                           </div>
                         </div>
@@ -1122,35 +1405,44 @@ export function SupersetPage() {
             </button>
           </div>
         </div>
+
+        {/* Swap sheet */}
+        {swappingEntryIdx !== null && (() => {
+          const swappingEntry = activeSession.entries[swappingEntryIdx];
+          // All currently used defIds except the one being swapped
+          const otherDefIds = new Set(
+            activeSession.entries
+              .filter((_, i) => i !== swappingEntryIdx)
+              .map((e) => e.defId),
+          );
+          return (
+            <SearchSheet
+              allDefs={allDefs}
+              exerciseDb={store.exerciseDb}
+              usedDefIds={otherDefIds}
+              lastSessionDefIds={lastSessionDefIds}
+              customMuscleGroups={store.customMuscleGroups}
+              onSelect={(def) => {
+                store.swapSessionEntry(activeSession.id, swappingEntryIdx, {
+                  defId: def.id,
+                  defName: def.name,
+                  exerciseAId: def.exerciseAId,
+                  exerciseBId: def.exerciseBId,
+                  muscleGroup: def.muscleGroup,
+                  numSets: swappingEntry.numSets,
+                });
+                setSwappingEntryIdx(null);
+              }}
+              onClose={() => setSwappingEntryIdx(null)}
+              onCreateCustom={() => setSwappingEntryIdx(null)}
+            />
+          );
+        })()}
       </div>
     );
   }
 
   // ─── Planning view ────────────────────────────────────────────────────────
-
-  const sortedExercises = useMemo(
-    () => Object.values(store.exerciseDb).sort((a, b) => a.name.localeCompare(b.name)),
-    [store.exerciseDb],
-  );
-
-  // Exercises grouped by muscle group for the exercises tab
-  const exercisesByGroup = useMemo(() => {
-    const byGroup = new Map<string, SsExercise[]>();
-    for (const ex of sortedExercises) {
-      const g = ex.muscleGroup || '__none__';
-      if (!byGroup.has(g)) byGroup.set(g, []);
-      byGroup.get(g)!.push(ex);
-    }
-    const orderedGroups = [
-      ...SS_MUSCLE_GROUPS.filter((g) => byGroup.has(g)),
-      ...(byGroup.has('__none__') ? ['__none__'] : []),
-    ];
-    return orderedGroups.map((g) => ({
-      groupId: g,
-      label: g === '__none__' ? 'Uncategorised' : `${MUSCLE_GROUP_META[g as SsMuscleGroup]?.emoji ?? ''} ${MUSCLE_GROUP_META[g as SsMuscleGroup]?.label ?? g}`,
-      exercises: byGroup.get(g)!,
-    }));
-  }, [sortedExercises]);
 
   return (
     <div className="flex flex-col flex-1">
@@ -1159,17 +1451,22 @@ export function SupersetPage() {
       {/* Tab toggle */}
       <div className="px-4 pt-3 pb-1 shrink-0">
         <div className="flex bg-[var(--color-surface)] rounded-xl p-1 gap-1">
-          {(['supersets', 'exercises', 'categories'] as const).map((t) => (
+          {([
+            { id: 'supersets', label: 'Workout' },
+            { id: 'saved', label: 'Saved' },
+            { id: 'exercises', label: 'Exercises' },
+            { id: 'categories', label: 'Categories' },
+          ] as const).map((t) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors capitalize ${
-                tab === t
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                tab === t.id
                   ? 'bg-white text-[var(--color-text)] shadow-sm'
                   : 'text-[var(--color-text-muted)]'
               }`}
             >
-              {t === 'supersets' ? 'Supersets' : t === 'exercises' ? 'Exercises' : 'Categories'}
+              {t.label}
             </button>
           ))}
         </div>
@@ -1327,35 +1624,66 @@ export function SupersetPage() {
                 {exercises.map((ex) => (
                   <div
                     key={ex.id}
-                    className="bg-white border border-[var(--color-border)] rounded-xl px-4 py-3 flex items-center gap-3"
+                    className="bg-white border border-[var(--color-border)] rounded-xl px-4 py-3 space-y-2.5"
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">{ex.name}</p>
-                      {ex.lastWeightLbs !== null && (
-                        <p className="text-xs text-[var(--color-text-muted)]">
-                          Last: {ex.lastWeightLbs} lbs
-                          {ex.lastOutcome && (
-                            <span className={`ml-1 ${ex.lastOutcome === 'success' ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
-                              {ex.lastOutcome === 'success' ? '↑' : '↓'}
-                            </span>
-                          )}
-                        </p>
-                      )}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[var(--color-text)] truncate">{ex.name}</p>
+                        {ex.lastWeightLbs !== null && (
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            Last: {ex.lastWeightLbs} lbs
+                            {ex.lastOutcome && (
+                              <span className={`ml-1 ${ex.lastOutcome === 'success' ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
+                                {ex.lastOutcome === 'success' ? '↑' : '↓'}
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => store.updateExerciseWeight(ex.id, -5)}
+                          className="w-8 h-8 rounded-full border-2 border-[var(--color-border)] text-lg font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+                        >
+                          −
+                        </button>
+                        <div className="flex items-center gap-0.5">
+                          <NumericInput
+                            value={ex.weightLbs}
+                            onCommit={(v) => store.updateExerciseWeight(ex.id, v - ex.weightLbs)}
+                            min={0}
+                            className="w-14 text-center text-lg font-black text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                          />
+                          <span className="text-xs text-[var(--color-text-muted)]">lbs</span>
+                        </div>
+                        <button
+                          onClick={() => store.updateExerciseWeight(ex.id, 5)}
+                          className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white text-lg font-bold flex items-center justify-center"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[var(--color-text-muted)] flex-1">Target reps</span>
                       <button
-                        onClick={() => store.updateExerciseWeight(ex.id, -5)}
-                        className="w-8 h-8 rounded-full border-2 border-[var(--color-border)] text-lg font-bold flex items-center justify-center text-[var(--color-text-muted)]"
+                        onClick={() => store.updateExerciseTargetReps(ex.id, -1)}
+                        className="w-7 h-7 rounded-full border-2 border-[var(--color-border)] text-sm font-bold flex items-center justify-center text-[var(--color-text-muted)]"
                       >
                         −
                       </button>
-                      <div className="w-16 text-center">
-                        <span className="text-lg font-black text-[var(--color-text)]">{ex.weightLbs}</span>
-                        <span className="text-xs text-[var(--color-text-muted)] ml-0.5">lbs</span>
+                      <div className="flex items-center gap-0.5">
+                        <NumericInput
+                          value={ex.targetReps ?? 10}
+                          onCommit={(v) => store.updateExerciseTargetReps(ex.id, v - (ex.targetReps ?? 10))}
+                          min={1}
+                          className="w-10 text-center text-sm font-bold text-[var(--color-text)] bg-transparent border-b-2 border-transparent focus:border-[var(--color-primary)] outline-none"
+                        />
+                        <span className="text-xs text-[var(--color-text-muted)]">reps</span>
                       </div>
                       <button
-                        onClick={() => store.updateExerciseWeight(ex.id, 5)}
-                        className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white text-lg font-bold flex items-center justify-center"
+                        onClick={() => store.updateExerciseTargetReps(ex.id, 1)}
+                        className="w-7 h-7 rounded-full bg-[var(--color-primary)] text-white text-sm font-bold flex items-center justify-center"
                       >
                         +
                       </button>
@@ -1365,6 +1693,142 @@ export function SupersetPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Saved Workouts tab ── */}
+      {tab === 'saved' && (
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-8 space-y-4">
+          {store.workoutTemplates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+              <span className="text-5xl">📋</span>
+              <div>
+                <p className="font-bold text-[var(--color-text)] text-base">No saved workouts yet</p>
+                <p className="text-sm text-[var(--color-text-muted)] mt-1">
+                  Build a workout on the Workout tab, then tap Save to store it here.
+                </p>
+              </div>
+              <button
+                onClick={() => setTab('supersets')}
+                className="px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-bold"
+              >
+                Go to Workout Builder
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
+                  {store.workoutTemplates.length} saved workout{store.workoutTemplates.length !== 1 ? 's' : ''}
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {store.workoutTemplates.map((tmpl) => {
+                  const isEditing = editingTemplateId === tmpl.id;
+                  return (
+                    <div
+                      key={tmpl.id}
+                      className="bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden shadow-sm"
+                    >
+                      {isEditing ? (
+                        <TemplateRenameRow
+                          template={tmpl}
+                          onSave={(title) => {
+                            store.renameWorkoutTemplate(tmpl.id, title);
+                            setEditingTemplateId(null);
+                          }}
+                          onCancel={() => setEditingTemplateId(null)}
+                        />
+                      ) : (
+                        <>
+                          {/* Header row */}
+                          <div className="px-4 pt-3.5 pb-2 flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-base text-[var(--color-text)] leading-tight">
+                                {tmpl.title}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                                {tmpl.entries.map((e) => getMeta(e.muscleGroup, store.customMuscleGroups).emoji).join(' ')}{' '}
+                                · {tmpl.entries.length} superset{tmpl.entries.length !== 1 ? 's' : ''}
+                                {' · '}saved {new Date(tmpl.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setEditingTemplateId(tmpl.id)}
+                              className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--color-border)] text-[var(--color-text-muted)] shrink-0 mt-0.5"
+                              title="Rename"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Exercise list */}
+                          <div className="border-t border-[var(--color-border)] divide-y divide-[var(--color-border)]">
+                            {tmpl.entries.map((e) => {
+                              const def = allDefs.find((d) => d.id === e.defId);
+                              const meta = getMeta(e.muscleGroup, store.customMuscleGroups);
+                              const exA = store.exerciseDb[e.exerciseAId];
+                              const exB = store.exerciseDb[e.exerciseBId];
+                              return (
+                                <div key={e.defId} className="px-4 py-2.5 flex items-center gap-3">
+                                  <span className="text-base shrink-0">{meta.emoji}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-[var(--color-text)] truncate">
+                                      {def?.name ?? e.defName}
+                                    </p>
+                                    <p className="text-xs text-[var(--color-text-muted)] truncate">
+                                      {exA?.name ?? e.exerciseAId} / {exB?.name ?? e.exerciseBId}
+                                    </p>
+                                  </div>
+                                  <span className="text-xs text-[var(--color-text-muted)] shrink-0 font-medium">{e.numSets} sets</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Action row */}
+                          <div className="px-4 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                const paddedIds: (string | null)[] = [
+                                  ...tmpl.entries.map((e) => e.defId),
+                                  null, null, null, null, null,
+                                ].slice(0, 5);
+                                setSlots(paddedIds);
+                                const newSets: Record<string, 1 | 3 | 5> = {};
+                                tmpl.entries.forEach((e) => { newSets[e.defId] = e.numSets; });
+                                setNumSetsMap(newSets);
+                                setSuggestedDismissed(true);
+                                setTab('supersets');
+                              }}
+                              className="flex-1 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-bold"
+                            >
+                              Load Workout 💪
+                            </button>
+                            <button
+                              onClick={() => store.deleteWorkoutTemplate(tmpl.id)}
+                              className="w-10 h-10 flex items-center justify-center rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger)] transition-colors"
+                              title="Delete"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                <path d="M10 11v6M14 11v6" />
+                                <path d="M9 6V4h6v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1504,16 +1968,32 @@ export function SupersetPage() {
                 {slots.filter(Boolean).length} of 5 supersets selected
               </p>
             </div>
-            {/* Progress pips */}
-            <div className="flex gap-1.5">
-              {slots.map((s, i) => (
-                <div
-                  key={i}
-                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                    s ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'
-                  }`}
-                />
-              ))}
+            <div className="flex items-center gap-2">
+              {/* Save as template button — visible when at least 1 slot is filled */}
+              {slots.some(Boolean) && (
+                <button
+                  onClick={() => setShowSaveTemplate(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  Save
+                </button>
+              )}
+              {/* Progress pips */}
+              <div className="flex gap-1.5">
+                {slots.map((s, i) => (
+                  <div
+                    key={i}
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                      s ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1665,6 +2145,30 @@ export function SupersetPage() {
         )}
       </div>
       )} {/* end tab === 'supersets' */}
+
+      {/* Save workout template sheet */}
+      {showSaveTemplate && (
+        <SaveTemplateSheet
+          onSave={(title) => {
+            const entries: SsWorkoutTemplateEntry[] = slots
+              .filter((id): id is string => !!id)
+              .map((defId) => {
+                const def = allDefs.find((d) => d.id === defId)!;
+                return {
+                  defId: def.id,
+                  defName: def.name,
+                  exerciseAId: def.exerciseAId,
+                  exerciseBId: def.exerciseBId,
+                  muscleGroup: def.muscleGroup,
+                  numSets: numSetsMap[defId] ?? 3,
+                };
+              });
+            store.saveWorkoutTemplate(title, entries);
+            setShowSaveTemplate(false);
+          }}
+          onClose={() => setShowSaveTemplate(false)}
+        />
+      )}
 
       {/* Search / browse sheet */}
       {openSlot !== null && (

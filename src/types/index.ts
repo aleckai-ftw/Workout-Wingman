@@ -139,6 +139,7 @@ export interface SsExercise {
   weightLbs: number;
   lastWeightLbs: number | null;
   lastOutcome: 'success' | 'failure' | null;
+  targetReps: number;       // target reps per set (default 10)
 }
 
 /** A superset pairing definition (from library or user-created) */
@@ -172,6 +173,8 @@ export interface SsSessionEntry {
   lastWeightB: number | null;
   lastOutcomeA: 'success' | 'failure' | null;
   lastOutcomeB: 'success' | 'failure' | null;
+  targetRepsA: number;      // target reps snapshot for exercise A
+  targetRepsB: number;      // target reps snapshot for exercise B
   sets: SsSessionSet[];
 }
 
@@ -182,10 +185,27 @@ export interface SsSession {
   completed: boolean;
 }
 
+export interface SsWorkoutTemplateEntry {
+  defId: ID;
+  defName: string;
+  exerciseAId: ID;
+  exerciseBId: ID;
+  muscleGroup: string;
+  numSets: 1 | 3 | 5;
+}
+
+export interface SsWorkoutTemplate {
+  id: ID;
+  title: string;
+  createdAt: string; // ISO-8601
+  entries: SsWorkoutTemplateEntry[];
+}
+
 export interface SupersetProgram {
   exerciseDb: Record<ID, SsExercise>; // single source of truth for exercise weights
   customDefs: SsDef[];
   customMuscleGroups: CustomMuscleGroup[];
   sessions: SsSession[];
   activeSessionId: ID | null;
+  workoutTemplates: SsWorkoutTemplate[];
 }

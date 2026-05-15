@@ -26,7 +26,9 @@ export function FloatingTimer() {
   const cdActive = cd.isRunning || (cd.phase !== 'idle' && cd.remainingSeconds > 0);
   // "between sets": set just finished but more sets remain — keep widget alive
   const restBetweenSets = !rest.isRunning && rest.remainingSeconds === 0 && rest.currentSet < rest.totalSets;
-  const restActive = rest.isRunning || restBetweenSets || (rest.remainingSeconds > 0 && rest.remainingSeconds < rest.durationSeconds);
+  // "all sets done": last set finished — keep widget alive so user can start over
+  const restAllDone = !rest.isRunning && rest.remainingSeconds === 0 && rest.currentSet >= rest.totalSets && rest.durationSeconds > 0;
+  const restActive = rest.isRunning || rest.readyToStart || restBetweenSets || restAllDone || (rest.remainingSeconds > 0 && rest.remainingSeconds < rest.durationSeconds);
 
   if (!cdActive && !restActive) return null;
 
@@ -37,6 +39,10 @@ export function FloatingTimer() {
   let label: string;
   if (showCountdown) {
     label = cd.phase === 'warmup' ? 'Warm Up' : 'Countdown';
+  } else if (restAllDone) {
+    label = 'All sets done';
+  } else if (rest.readyToStart) {
+    label = 'Ready · tap to start';
   } else if (restBetweenSets) {
     label = `Set ${rest.currentSet} done`;
   } else {
@@ -47,6 +53,10 @@ export function FloatingTimer() {
     e.stopPropagation();
     if (showCountdown) {
       isRunning ? cd.pause() : cd.resume();
+    } else if (restAllDone) {
+      rest.resetSets(); // sets readyToStart=true, widget stays alive showing play
+    } else if (rest.readyToStart) {
+      rest.start(rest.baseRestSeconds, 'Rest Timer', true);
     } else if (restBetweenSets) {
       rest.startNextSet();
     } else {
@@ -63,13 +73,19 @@ export function FloatingTimer() {
       className="fixed bottom-[76px] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-white border border-[var(--color-border)] shadow-lg rounded-full px-4 py-2.5 cursor-pointer hover:shadow-xl transition-shadow"
       aria-label="Open timer"
     >
-      {/* Play / Pause */}
+      {/* Play / Pause / Restart */}
       <button
         onClick={handlePlayPause}
-        aria-label={isRunning ? 'Pause' : 'Resume'}
-        className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center shrink-0"
+        aria-label={restAllDone ? 'Start over' : isRunning ? 'Pause' : 'Resume'}
+        className={`w-8 h-8 rounded-full text-white flex items-center justify-center shrink-0 ${restAllDone ? 'bg-[var(--color-success)]' : 'bg-[var(--color-primary)]'}`}
       >
-        {isRunning ? (
+        {restAllDone ? (
+          /* Restart / repeat icon */
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 .49-4" />
+          </svg>
+        ) : isRunning ? (
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
             <rect x="6" y="4" width="4" height="16" rx="1" />
             <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -84,7 +100,7 @@ export function FloatingTimer() {
       {/* Time + label */}
       <div className="flex flex-col leading-none">
         <span className="text-lg font-black tabular-nums text-[var(--color-text)]">
-          {formatTime(remaining)}
+          {restAllDone ? 'Done ✓' : formatTime(remaining)}
         </span>
         <span className="text-[10px] font-medium text-[var(--color-text-muted)] mt-0.5">
           {label}

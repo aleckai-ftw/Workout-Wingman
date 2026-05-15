@@ -121,6 +121,6 @@ export const BUILT_IN_SS_DEFS: SsDef[] = [
 export const BUILT_IN_EXERCISE_DB: Record<string, SsExercise> = Object.fromEntries(
   Array.from(_exEntries.entries()).map(([id, { name, muscleGroup }]) => [
     id,
-    { id, name, muscleGroup, weightLbs: 45, lastWeightLbs: null, lastOutcome: null } satisfies SsExercise,
+    { id, name, muscleGroup, weightLbs: 45, lastWeightLbs: null, lastOutcome: null, targetReps: 10 } satisfies SsExercise,
   ]),
 );

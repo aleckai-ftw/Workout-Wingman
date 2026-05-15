@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useFiveByFiveStore } from '../stores/fiveByFiveStore';
+import { useTimerStore } from '../stores/timerStore';
 import type { FxFExerciseDef, FxFSession, FxFSessionExercise, FxFSetState, FxFWorkoutKey } from '../types';
 
 // ─── Set Circle ───────────────────────────────────────────────────────────────
@@ -415,6 +416,8 @@ export function FiveByFivePage() {
     setPlanExerciseWeight,
   } = useFiveByFiveStore();
 
+  const timer = useTimerStore();
+
   const [editingWorkout, setEditingWorkout] = useState<FxFWorkoutKey | null>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId && !s.completed);
@@ -460,7 +463,23 @@ export function FiveByFivePage() {
               key={exIdx}
               exercise={ex}
               exIdx={exIdx}
-              onToggle={(ei, si) => toggleSetState(activeSession.id, ei, si)}
+              onToggle={(ei, si) => {
+                const currentState = activeSession.exercises[ei]?.sets[si]?.state;
+                toggleSetState(activeSession.id, ei, si);
+                // Auto-advance rest timer when a set is marked done (pending → done)
+                if (currentState === 'pending') {
+                  const isBetweenSets = !timer.isRunning && timer.remainingSeconds === 0 && timer.currentSet < timer.totalSets;
+                  if (timer.isRunning) {
+                    // Mid-rest: let the current set count down uninterrupted
+                  } else if (isBetweenSets) {
+                    // Waiting between sets: advance to next set
+                    timer.startNextSet();
+                  } else {
+                    // Idle / all done: start fresh from set 1
+                    timer.start(timer.baseRestSeconds, '5×5 Rest', true);
+                  }
+                }
+              }}
               onAdjust={(ei, delta) => adjustSessionWeight(activeSession.id, ei, delta)}
             />
           ))}
