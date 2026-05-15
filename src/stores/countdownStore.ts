@@ -121,13 +121,19 @@ export const useCountdownStore = create<CountdownStore>()((set, get) => ({
         return { remainingSeconds: 0, isRunning: false, intervalId: null, phase: 'idle' as const, endTime: null };
       }
 
-      // Fire interval alert when we cross a multiple of the interval boundary.
-      // Using a boundary-crossing check instead of exact equality so that coarse
-      // ticks (after being hidden) still trigger the alert.
-      if (s.intervalAlertSeconds > 0 && s.remainingSeconds > next) {
-        const prevMultiple = Math.floor(s.remainingSeconds / s.intervalAlertSeconds);
-        const nextMultiple = Math.floor(next / s.intervalAlertSeconds);
-        if (nextMultiple < prevMultiple && next > 0) {
+      // Fire interval alert at each interval boundary.
+      // For normal 1-second ticks use exact modulo. For coarse ticks (page was
+      // hidden and multiple seconds were skipped) use a boundary-crossing check so
+      // the alert isn't silently missed.
+      if (s.intervalAlertSeconds > 0 && next > 0) {
+        const skipped = s.remainingSeconds - next;
+        const hitBoundary =
+          skipped === 1
+            ? next % s.intervalAlertSeconds === 0               // normal tick
+            : Math.floor(next / s.intervalAlertSeconds) <       // coarse tick
+              Math.floor(s.remainingSeconds / s.intervalAlertSeconds);
+
+        if (hitBoundary) {
           const BLIP_GAP = 0.25;
           const maxBlips = Math.min(8, Math.max(1, Math.floor(s.intervalAlertSeconds / (BLIP_GAP + 0.05))));
           const newCount = Math.min(s.intervalCount + 1, maxBlips);
