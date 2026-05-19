@@ -209,3 +209,38 @@ export interface SupersetProgram {
   activeSessionId: ID | null;
   workoutTemplates: SsWorkoutTemplate[];
 }
+
+// ─── Individual Exercises ─────────────────────────────────────────────────────
+
+/** An exercise definition — built-in or user-created */
+export interface IndivExerciseDef {
+  id: ID;
+  name: string;
+  area: string;        // e.g. "Chest"
+  muscleGroup: string; // e.g. "Pectorals"
+  isCustom: boolean;
+}
+
+/** One set within a logged exercise entry */
+export interface IndivSet {
+  id: ID;
+  reps: number;
+  weightLbs: number;
+}
+
+/** A logged exercise entry (one exercise, one or more sets, one day) */
+export interface IndivExerciseEntry {
+  id: ID;
+  defId: ID;
+  name: string;        // snapshot of exercise name at log time
+  area: string;        // snapshot of area
+  muscleGroup: string; // snapshot
+  date: string;        // YYYY-MM-DD
+  timestamp: string;   // ISO-8601
+  sets: IndivSet[];
+}
+
+export interface IndivExerciseState {
+  entries: IndivExerciseEntry[];
+  customDefs: IndivExerciseDef[];
+}

@@ -9,6 +9,7 @@ import { TimerPage } from './pages/TimerPage';
 import { ProteinPage } from './pages/ProteinPage';
 import { SupersetPage } from './pages/SupersetPage';
 import { FiveByFivePage } from './pages/FiveByFivePage';
+import { IndividualExercisePage } from './pages/IndividualExercisePage';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/protein" element={<ProteinPage />} />
           <Route path="/superset" element={<SupersetPage />} />
           <Route path="/5x5" element={<FiveByFivePage />} />
+          <Route path="/exercises" element={<IndividualExercisePage />} />
         </Route>
       </Routes>
     </HashRouter>
