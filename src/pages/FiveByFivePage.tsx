@@ -55,17 +55,40 @@ function SetCircle({
 function SessionExCard({
   exercise,
   exIdx,
+  exerciseDb,
   onToggle,
   onAdjust,
+  onSwap,
 }: {
   exercise: FxFSessionExercise;
   exIdx: number;
+  exerciseDb: Record<string, FxFExerciseDef>;
   onToggle: (exIdx: number, setIdx: number) => void;
   onAdjust: (exIdx: number, delta: number) => void;
+  onSwap: (exIdx: number, name: string, weightLbs: number, numSets: number) => void;
 }) {
   const allDone = exercise.sets.every((s) => s.state === 'done');
   const failedIdx = exercise.sets.findIndex((s) => s.state === 'failed');
   const hasFailed = failedIdx !== -1;
+
+  const [swapping, setSwapping] = useState(false);
+  const [swapQuery, setSwapQuery] = useState('');
+  const [swapWeight, setSwapWeight] = useState(String(exercise.weightLbs));
+  const [swapSets, setSwapSets] = useState(exercise.numSets);
+
+  const dbExercises = Object.values(exerciseDb).filter((d) => d.id !== exercise.defId);
+
+  function openSwap() {
+    setSwapping(true);
+    setSwapQuery('');
+    setSwapWeight(String(exercise.weightLbs));
+    setSwapSets(exercise.numSets);
+  }
+
+  function confirmSwap(name: string, weight: number, sets: number) {
+    onSwap(exIdx, name, weight, sets);
+    setSwapping(false);
+  }
 
   return (
     <div
@@ -78,9 +101,21 @@ function SessionExCard({
       }`}
     >
       {/* Name + weight adjust buttons */}
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-[var(--color-text)]">{exercise.name}</h3>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="font-bold text-[var(--color-text)] truncate">{exercise.name}</h3>
+          <button
+            onClick={swapping ? () => setSwapping(false) : openSwap}
+            className={`shrink-0 flex items-center gap-1 text-xs font-bold border-2 rounded-full px-2 py-0.5 transition-colors ${
+              swapping
+                ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+            }`}
+          >
+            ⇄
+          </button>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => onAdjust(exIdx, -5)}
             className="flex items-center gap-1 text-xs font-bold text-[var(--color-danger)] border-2 border-[var(--color-danger)] rounded-full px-2.5 py-1 active:bg-[var(--color-danger)] active:text-white transition-colors"
@@ -95,6 +130,86 @@ function SessionExCard({
           </button>
         </div>
       </div>
+
+      {/* Swap panel */}
+      {swapping && (
+        <div className="border border-[var(--color-primary)]/30 bg-[var(--color-surface)] rounded-xl p-3 space-y-3">
+          <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Swap Exercise</p>
+
+          {/* DB exercise chips */}
+          {dbExercises.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {dbExercises.map((def) => (
+                <button
+                  key={def.id}
+                  onClick={() => confirmSwap(def.name, def.weightLbs, def.numSets)}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium border border-[var(--color-border)] text-[var(--color-text-muted)] bg-white active:bg-[var(--color-primary)] active:text-white active:border-[var(--color-primary)] transition-colors"
+                >
+                  {def.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Custom name input */}
+          <input
+            type="text"
+            placeholder="Or type a custom exercise name…"
+            value={swapQuery}
+            onChange={(e) => setSwapQuery(e.target.value)}
+            onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
+            className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)] bg-white"
+          />
+
+          {/* Weight + sets row */}
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0"
+              step="5"
+              value={swapWeight}
+              onChange={(e) => setSwapWeight(e.target.value)}
+              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
+              className="w-20 px-2 py-2 rounded-lg border border-[var(--color-border)] text-sm text-center focus:outline-none focus:border-[var(--color-primary)] bg-white"
+            />
+            <span className="text-xs text-[var(--color-text-muted)]">lbs</span>
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="text-xs text-[var(--color-text-muted)]">Sets:</span>
+              {[1, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSwapSets(n)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold border transition-colors ${
+                    swapSets === n
+                      ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] bg-white'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSwapping(false)}
+              className="flex-1 py-2 rounded-lg border border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-muted)]"
+            >
+              Cancel
+            </button>
+            {swapQuery.trim() && (
+              <button
+                onClick={() => confirmSwap(swapQuery.trim(), parseFloat(swapWeight) || 45, swapSets)}
+                className="flex-1 py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold truncate px-2"
+              >
+                Use "{swapQuery.trim()}"
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Weight */}
       <div>
@@ -200,6 +315,7 @@ function PlanExRow({
             step="5"
             value={def.weightLbs}
             onChange={(e) => onWeightChange(parseFloat(e.target.value) || 0)}
+            onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
             className="w-16 px-2 py-1.5 rounded-lg border border-[var(--color-border)] text-sm text-center focus:outline-none focus:border-[var(--color-primary)]"
           />
           <span className="text-xs text-[var(--color-text-muted)]">lbs</span>
@@ -349,6 +465,7 @@ function WorkoutPlanCard({
             placeholder="Or type a custom exercise name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
+            onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
           />
@@ -362,6 +479,7 @@ function WorkoutPlanCard({
               placeholder="45"
               value={newWeight}
               onChange={(e) => setNewWeight(e.target.value)}
+              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
               className="w-20 px-2 py-2 rounded-lg border border-[var(--color-border)] text-sm text-center focus:outline-none focus:border-[var(--color-primary)]"
             />
             <span className="text-xs text-[var(--color-text-muted)]">lbs</span>
@@ -414,6 +532,7 @@ export function FiveByFivePage() {
     addExerciseToPlan,
     removeExerciseFromPlan,
     setPlanExerciseWeight,
+    swapSessionExercise,
   } = useFiveByFiveStore();
 
   const timer = useTimerStore();
@@ -463,6 +582,7 @@ export function FiveByFivePage() {
               key={exIdx}
               exercise={ex}
               exIdx={exIdx}
+              exerciseDb={exerciseDb}
               onToggle={(ei, si) => {
                 const currentState = activeSession.exercises[ei]?.sets[si]?.state;
                 toggleSetState(activeSession.id, ei, si);
@@ -481,6 +601,7 @@ export function FiveByFivePage() {
                 }
               }}
               onAdjust={(ei, delta) => adjustSessionWeight(activeSession.id, ei, delta)}
+              onSwap={(ei, name, weight, sets) => swapSessionExercise(activeSession.id, ei, name, weight, sets)}
             />
           ))}
           <button

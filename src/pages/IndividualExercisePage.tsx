@@ -54,7 +54,11 @@ function NumericInput({
       value={draft}
       placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value.replace(/[^0-9.]/g, ''))}
-      onFocus={(e) => { setFocused(true); e.target.select(); }}
+      onFocus={(e) => {
+        setFocused(true);
+        e.target.select();
+        setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300);
+      }}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
@@ -138,12 +142,14 @@ function SetRow({
 function SetLoggerSheet({
   exercise,
   unit,
+  lastEntry,
   onLog,
   onBack,
   onClose,
 }: {
   exercise: IndivExerciseDef;
   unit: 'lbs' | 'kg';
+  lastEntry?: IndivExerciseEntry;
   onLog: (sets: Omit<IndivSet, 'id'>[]) => void;
   onBack: () => void;
   onClose: () => void;
@@ -214,6 +220,30 @@ function SetLoggerSheet({
           <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Weight ({unit})</span>
           <span className="w-8" />
         </div>
+
+        {/* Last session info */}
+        {lastEntry && (
+          <div className="mx-5 mb-2 p-3 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] shrink-0">
+            <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
+              Last time &middot;{' '}
+              {new Date(lastEntry.timestamp).toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {lastEntry.sets.map((s) => (
+                <span
+                  key={s.id}
+                  className="text-xs font-semibold text-[var(--color-text)] bg-white border border-[var(--color-border)] px-2 py-0.5 rounded-full"
+                >
+                  {s.reps}&times;{unit === 'kg' ? `${lbsToKg(s.weightLbs)}kg` : `${s.weightLbs}lbs`}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Sets */}
         <div className="flex-1 overflow-y-auto px-5 space-y-3 pb-4">
@@ -358,6 +388,7 @@ function CustomExerciseSheet({
             <input
               value={muscleGroup}
               onChange={(e) => setMuscleGroup(e.target.value)}
+              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
               placeholder={`e.g. ${area}`}
               className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
@@ -441,6 +472,7 @@ function ExercisePickerSheet({
               placeholder="Search exercises..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
               className="flex-1 bg-transparent text-sm focus:outline-none text-[var(--color-text)] placeholder-[var(--color-text-muted)]"
             />
             {query && (
@@ -754,6 +786,14 @@ export function IndividualExercisePage() {
 
   const [sheet, setSheet] = useState<SheetState>({ type: 'none' });
 
+  const lastEntry = useMemo(() => {
+    if (sheet.type !== 'logger') return undefined;
+    const today = todayDateKey();
+    return store.entries
+      .filter((e) => e.defId === sheet.def.id && e.date !== today)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
+  }, [sheet, store.entries]);
+
   function openPicker() { setSheet({ type: 'picker' }); }
   function closeSheet() { setSheet({ type: 'none' }); }
 
@@ -846,6 +886,7 @@ export function IndividualExercisePage() {
           <SetLoggerSheet
             exercise={sheet.def}
             unit={unit}
+            lastEntry={lastEntry}
             onLog={handleLog}
             onBack={openPicker}
             onClose={closeSheet}

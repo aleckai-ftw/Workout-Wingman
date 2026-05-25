@@ -50,6 +50,7 @@ interface FiveByFiveStore extends FiveByFiveProgram {
   addExerciseToPlan: (workout: FxFWorkoutKey, name: string, weightLbs?: number, numSets?: number) => void;
   removeExerciseFromPlan: (workout: FxFWorkoutKey, defId: string) => void;
   setPlanExerciseWeight: (workout: FxFWorkoutKey, defId: string, weight: number) => void;
+  swapSessionExercise: (sessionId: string, exIdx: number, name: string, weightLbs: number, numSets: number) => void;
 }
 
 function save(state: FiveByFiveProgram) {
@@ -240,6 +241,42 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
             ...s,
             exerciseDb: { ...s.exerciseDb, [defId]: { ...current, weightLbs: weight } },
           };
+          save(next);
+          return next;
+        }),
+
+      swapSessionExercise: (sessionId, exIdx, name, weightLbs, numSets) =>
+        set((s) => {
+          // Find existing def by name (case-insensitive) or create new one
+          const existingDef = Object.values(s.exerciseDb).find(
+            (d) => d.name.toLowerCase() === name.toLowerCase(),
+          );
+          let defId: string;
+          let updatedDb = s.exerciseDb;
+          if (existingDef) {
+            defId = existingDef.id;
+          } else {
+            defId = crypto.randomUUID();
+            const newDef = makeExDef(defId, name, weightLbs, numSets);
+            updatedDb = { ...s.exerciseDb, [defId]: newDef };
+          }
+          const def = updatedDb[defId];
+          const newEx: FxFSessionExercise = {
+            defId,
+            name: def.name,
+            numSets,
+            weightLbs: existingDef ? existingDef.weightLbs : weightLbs,
+            targetReps: def.targetReps,
+            lastWeightLbs: def.lastWeightLbs,
+            lastOutcome: def.lastOutcome,
+            sets: makeSets(numSets),
+          };
+          const sessions = s.sessions.map((sess) => {
+            if (sess.id !== sessionId) return sess;
+            const exercises = sess.exercises.map((ex, ei) => (ei === exIdx ? newEx : ex));
+            return { ...sess, exercises };
+          });
+          const next: FiveByFiveProgram = { ...s, exerciseDb: updatedDb, sessions };
           save(next);
           return next;
         }),
