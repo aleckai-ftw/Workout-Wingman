@@ -1,4 +1,19 @@
 import { useState } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { PageHeader } from '../components/PageHeader';
 import { useFiveByFiveStore } from '../stores/fiveByFiveStore';
 import { useTimerStore } from '../stores/timerStore';
@@ -282,17 +297,54 @@ function PlanExRow({
   onDelete: () => void;
   onWeightChange: (w: number) => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: def.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-[var(--color-border)] last:border-0">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 py-3 border-b border-[var(--color-border)] last:border-0 bg-white"
+    >
       {editing && (
-        <button
-          onClick={onDelete}
-          className="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
+        <>
+          <button
+            onClick={onDelete}
+            className="w-6 h-6 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+          {/* Drag handle */}
+          <button
+            {...attributes}
+            {...listeners}
+            className="w-6 h-8 flex items-center justify-center text-[var(--color-text-muted)] cursor-grab active:cursor-grabbing shrink-0 touch-none select-none"
+            aria-label="Drag to reorder"
+          >
+            <svg viewBox="0 0 10 16" fill="currentColor" className="w-3 h-4 opacity-50">
+              <circle cx="2" cy="2" r="1.5" />
+              <circle cx="8" cy="2" r="1.5" />
+              <circle cx="2" cy="8" r="1.5" />
+              <circle cx="8" cy="8" r="1.5" />
+              <circle cx="2" cy="14" r="1.5" />
+              <circle cx="8" cy="14" r="1.5" />
+            </svg>
+          </button>
+        </>
       )}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-[var(--color-text)] truncate">{def.name}</p>
@@ -342,6 +394,7 @@ function WorkoutPlanCard({
   onDelete,
   onWeightChange,
   onAddExercise,
+  onReorder,
 }: {
   workout: FxFWorkoutKey;
   defs: FxFExerciseDef[];
@@ -352,10 +405,26 @@ function WorkoutPlanCard({
   onDelete: (defId: string) => void;
   onWeightChange: (defId: string, w: number) => void;
   onAddExercise: (name: string, weight: number, numSets: number) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
 }) {
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState('45');
   const [newNumSets, setNewNumSets] = useState(5);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIndex = defs.findIndex((d) => d.id === active.id);
+    const toIndex = defs.findIndex((d) => d.id === over.id);
+    if (fromIndex !== -1 && toIndex !== -1) onReorder(fromIndex, toIndex);
+  }
 
   const PRESET_EXERCISES = [
     { name: 'Squat', sets: 5 },
@@ -421,15 +490,19 @@ function WorkoutPlanCard({
             No exercises. Tap Edit to add some.
           </p>
         ) : (
-          defs.map((def) => (
-            <PlanExRow
-              key={def.id}
-              def={def}
-              editing={editing}
-              onDelete={() => onDelete(def.id)}
-              onWeightChange={(w) => onWeightChange(def.id, w)}
-            />
-          ))
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={defs.map((d) => d.id)} strategy={verticalListSortingStrategy}>
+              {defs.map((def) => (
+                <PlanExRow
+                  key={def.id}
+                  def={def}
+                  editing={editing}
+                  onDelete={() => onDelete(def.id)}
+                  onWeightChange={(w) => onWeightChange(def.id, w)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -533,6 +606,7 @@ export function FiveByFivePage() {
     removeExerciseFromPlan,
     setPlanExerciseWeight,
     swapSessionExercise,
+    reorderPlanExercises,
   } = useFiveByFiveStore();
 
   const timer = useTimerStore();
@@ -639,6 +713,7 @@ export function FiveByFivePage() {
             onDelete={(defId) => removeExerciseFromPlan(workout, defId)}
             onWeightChange={(defId, w) => setPlanExerciseWeight(workout, defId, w)}
             onAddExercise={(name, weight, numSets) => addExerciseToPlan(workout, name, weight, numSets)}
+            onReorder={(from, to) => reorderPlanExercises(workout, from, to)}
           />
         ))}
 

@@ -91,43 +91,60 @@ function SetRow({
   onRemove: () => void;
   canRemove: boolean;
 }) {
+  const weightDelta = unit === 'kg' ? 2.5 : 5;
+
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs font-bold text-[var(--color-text-muted)] w-6 shrink-0 text-center">
+      {/* Set number */}
+      <span className="w-5 text-xs font-bold text-[var(--color-text-muted)] text-center shrink-0 select-none">
         {index + 1}
       </span>
 
-      {/* Reps */}
-      <div className="flex-1 flex flex-col items-center">
+      {/* Reps stepper */}
+      <div className="flex items-center flex-1 rounded-xl overflow-hidden border border-[var(--color-border)]">
+        <button
+          onClick={() => onChange({ reps: Math.max(1, data.reps - 1) })}
+          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-r border-[var(--color-border)]"
+        >−</button>
         <NumericInput
           value={data.reps}
-          onCommit={(v) => onChange({ reps: Math.round(v) })}
+          onCommit={(v) => onChange({ reps: Math.max(1, Math.round(v)) })}
           min={1}
           placeholder="0"
-          className="w-full text-center text-base font-bold text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-2 py-2.5 focus:outline-none focus:border-[var(--color-primary)]"
+          className="flex-1 h-11 text-center text-base font-bold text-[var(--color-text)] bg-white focus:outline-none"
         />
-        <span className="text-[10px] text-[var(--color-text-muted)] mt-0.5">reps</span>
+        <button
+          onClick={() => onChange({ reps: data.reps + 1 })}
+          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-l border-[var(--color-border)]"
+        >+</button>
       </div>
 
-      <span className="text-[var(--color-text-muted)] text-sm font-bold">×</span>
+      <span className="text-[var(--color-text-muted)] text-xs font-bold shrink-0 select-none">×</span>
 
-      {/* Weight */}
-      <div className="flex-1 flex flex-col items-center">
+      {/* Weight stepper */}
+      <div className="flex items-center flex-1 rounded-xl overflow-hidden border border-[var(--color-border)]">
+        <button
+          onClick={() => onChange({ weightDisplay: Math.max(0, +((data.weightDisplay - weightDelta).toFixed(2))) })}
+          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-r border-[var(--color-border)]"
+        >−</button>
         <NumericInput
           value={data.weightDisplay}
-          onCommit={(v) => onChange({ weightDisplay: v })}
+          onCommit={(v) => onChange({ weightDisplay: Math.max(0, v) })}
           min={0}
           placeholder="0"
-          className="w-full text-center text-base font-bold text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-2 py-2.5 focus:outline-none focus:border-[var(--color-primary)]"
+          className="flex-1 h-11 text-center text-base font-bold text-[var(--color-text)] bg-white focus:outline-none"
         />
-        <span className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{unit}</span>
+        <button
+          onClick={() => onChange({ weightDisplay: +((data.weightDisplay + weightDelta).toFixed(2)) })}
+          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-l border-[var(--color-border)]"
+        >+</button>
       </div>
 
       {/* Remove */}
       <button
         onClick={onRemove}
         disabled={!canRemove}
-        className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-danger)] disabled:opacity-20 transition-colors"
+        className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-[var(--color-text-muted)] active:text-[var(--color-danger)] disabled:opacity-20"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -154,7 +171,15 @@ function SetLoggerSheet({
   onBack: () => void;
   onClose: () => void;
 }) {
-  const [sets, setSets] = useState<SetRowData[]>([{ reps: 0, weightDisplay: 0 }]);
+  const [sets, setSets] = useState<SetRowData[]>(() => {
+    if (lastEntry && lastEntry.sets.length > 0) {
+      return lastEntry.sets.map((s) => ({
+        reps: s.reps,
+        weightDisplay: unit === 'kg' ? lbsToKg(s.weightLbs) : s.weightLbs,
+      }));
+    }
+    return [{ reps: 0, weightDisplay: 0 }];
+  });
 
   function handleChange(i: number, patch: Partial<SetRowData>) {
     setSets((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -186,8 +211,8 @@ function SetLoggerSheet({
     <>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="absolute left-0 right-0 bg-white rounded-t-3xl flex flex-col"
-        style={{ bottom: 64, maxHeight: 'calc(90dvh - 64px)' }}
+        className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl flex flex-col"
+        style={{ maxHeight: '92dvh' }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1 shrink-0">
@@ -213,35 +238,23 @@ function SetLoggerSheet({
         </div>
 
         {/* Column labels */}
-        <div className="flex items-center gap-2 px-5 pt-4 pb-2 shrink-0">
-          <span className="w-6" />
+        <div className="flex items-center gap-2 px-5 pt-3 pb-1 shrink-0">
+          <span className="w-5 shrink-0" />
           <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Reps</span>
-          <span className="w-4" />
+          <span className="text-[var(--color-text-muted)] text-xs shrink-0 opacity-0 select-none">×</span>
           <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Weight ({unit})</span>
-          <span className="w-8" />
+          <span className="w-8 shrink-0" />
         </div>
 
-        {/* Last session info */}
+        {/* Last time banner — compact single line */}
         {lastEntry && (
-          <div className="mx-5 mb-2 p-3 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] shrink-0">
-            <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1.5">
-              Last time &middot;{' '}
-              {new Date(lastEntry.timestamp).toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-              })}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {lastEntry.sets.map((s) => (
-                <span
-                  key={s.id}
-                  className="text-xs font-semibold text-[var(--color-text)] bg-white border border-[var(--color-border)] px-2 py-0.5 rounded-full"
-                >
-                  {s.reps}&times;{unit === 'kg' ? `${lbsToKg(s.weightLbs)}kg` : `${s.weightLbs}lbs`}
-                </span>
-              ))}
-            </div>
+          <div className="mx-5 mb-1 px-3 py-1.5 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] shrink-0 flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide shrink-0">
+              Last &middot; {new Date(lastEntry.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </span>
+            <span className="text-xs text-[var(--color-text-muted)] truncate">
+              {lastEntry.sets.map((s) => `${s.reps}×${unit === 'kg' ? lbsToKg(s.weightLbs) + 'kg' : s.weightLbs + 'lbs'}`).join(' · ')}
+            </span>
           </div>
         )}
 
@@ -314,8 +327,8 @@ function CustomExerciseSheet({
     <>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="absolute left-0 right-0 bg-white rounded-t-3xl flex flex-col"
-        style={{ bottom: 64, maxHeight: 'calc(90dvh - 64px)' }}
+        className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl flex flex-col"
+        style={{ maxHeight: '92dvh' }}
       >
         <div className="flex justify-center pt-3 pb-1 shrink-0">
           <div className="w-10 h-1 bg-[var(--color-border)] rounded-full" />
@@ -427,7 +440,7 @@ function ExercisePickerSheet({
 
   if (view === 'custom') {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
         <CustomExerciseSheet
           onSaved={(def) => onSelect(def)}
           onBack={() => setView('list')}
@@ -438,12 +451,12 @@ function ExercisePickerSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div
-        className="absolute left-0 right-0 bg-white rounded-t-3xl flex flex-col"
-        style={{ bottom: 64, maxHeight: 'calc(90dvh - 64px)' }}
+        className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl flex flex-col"
+        style={{ maxHeight: '92dvh' }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1 shrink-0">
@@ -670,11 +683,11 @@ function EntryCard({
 
           {/* Column labels */}
           <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-            <span className="w-6" />
+            <span className="w-5 shrink-0" />
             <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Reps</span>
-            <span className="w-4" />
+            <span className="text-[var(--color-text-muted)] text-xs shrink-0 opacity-0 select-none">×</span>
             <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Weight ({unit})</span>
-            <span className="w-8" />
+            <span className="w-8 shrink-0" />
           </div>
 
           {/* Set rows */}
@@ -882,7 +895,7 @@ export function IndividualExercisePage() {
 
       {/* Set logger sheet */}
       {sheet.type === 'logger' && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
+        <div className="fixed inset-0 z-[60] flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
           <SetLoggerSheet
             exercise={sheet.def}
             unit={unit}

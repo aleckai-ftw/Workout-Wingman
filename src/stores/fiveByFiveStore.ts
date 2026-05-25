@@ -50,6 +50,7 @@ interface FiveByFiveStore extends FiveByFiveProgram {
   addExerciseToPlan: (workout: FxFWorkoutKey, name: string, weightLbs?: number, numSets?: number) => void;
   removeExerciseFromPlan: (workout: FxFWorkoutKey, defId: string) => void;
   setPlanExerciseWeight: (workout: FxFWorkoutKey, defId: string, weight: number) => void;
+  reorderPlanExercises: (workout: FxFWorkoutKey, fromIndex: number, toIndex: number) => void;
   swapSessionExercise: (sessionId: string, exIdx: number, name: string, weightLbs: number, numSets: number) => void;
 }
 
@@ -240,6 +241,19 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
           const next: FiveByFiveProgram = {
             ...s,
             exerciseDb: { ...s.exerciseDb, [defId]: { ...current, weightLbs: weight } },
+          };
+          save(next);
+          return next;
+        }),
+
+      reorderPlanExercises: (workout, fromIndex, toIndex) =>
+        set((s) => {
+          const ids = [...s.plan[workout]];
+          const [moved] = ids.splice(fromIndex, 1);
+          ids.splice(toIndex, 0, moved);
+          const next: FiveByFiveProgram = {
+            ...s,
+            plan: { ...s.plan, [workout]: ids },
           };
           save(next);
           return next;
