@@ -19,17 +19,19 @@ function makeExDef(
   name: string,
   weightLbs = 45,
   numSets = 5,
+  area?: string,
+  muscleGroup?: string,
 ): FxFExerciseDef {
-  return { id, name, numSets, weightLbs, targetReps: 5, lastWeightLbs: null, lastOutcome: null };
+  return { id, name, numSets, weightLbs, targetReps: 5, lastWeightLbs: null, lastOutcome: null, area, muscleGroup };
 }
 
 // Stable IDs — Squat appears in both A & B and shares the same entry
 const DEFAULT_EXERCISE_DB: Record<string, FxFExerciseDef> = {
-  squat:    makeExDef('squat',    'Squat'),
-  bench:    makeExDef('bench',    'Bench Press'),
-  row:      makeExDef('row',      'Barbell Row'),
-  ohp:      makeExDef('ohp',      'Overhead Press'),
-  deadlift: makeExDef('deadlift', 'Deadlift', 45, 1),
+  squat:    makeExDef('squat',    'Squat',           45, 5, 'Quads',      'Quadriceps'),
+  bench:    makeExDef('bench',    'Bench Press',     45, 5, 'Chest',      'Pectorals'),
+  row:      makeExDef('row',      'Barbell Row',     45, 5, 'Back',       'Lats / Rhomboids'),
+  ohp:      makeExDef('ohp',      'Overhead Press',  45, 5, 'Shoulders',  'Front / Side Delts'),
+  deadlift: makeExDef('deadlift', 'Deadlift',        45, 1, 'Lower Back', 'Spinal Erectors'),
 };
 
 const DEFAULT_PLAN: FxFPlan = {
@@ -47,7 +49,7 @@ interface FiveByFiveStore extends FiveByFiveProgram {
   adjustSessionWeight: (sessionId: string, exIdx: number, delta: number) => void;
   completeSession: (sessionId: string) => void;
   cancelSession: (sessionId: string) => void;
-  addExerciseToPlan: (workout: FxFWorkoutKey, name: string, weightLbs?: number, numSets?: number) => void;
+  addExerciseToPlan: (workout: FxFWorkoutKey, name: string, weightLbs?: number, numSets?: number, area?: string, muscleGroup?: string) => void;
   removeExerciseFromPlan: (workout: FxFWorkoutKey, defId: string) => void;
   setPlanExerciseWeight: (workout: FxFWorkoutKey, defId: string, weight: number) => void;
   reorderPlanExercises: (workout: FxFWorkoutKey, fromIndex: number, toIndex: number) => void;
@@ -61,8 +63,19 @@ function save(state: FiveByFiveProgram) {
 export const useFiveByFiveStore = create<FiveByFiveStore>()(
   subscribeWithSelector((set, get) => {
     const loaded = loadFromStorage<Partial<FiveByFiveProgram>>(KEY, {});
+    const loadedDb = (loaded as FiveByFiveProgram).exerciseDb ?? DEFAULT_EXERCISE_DB;
+    // Backfill area/muscleGroup for built-in exercises that predate this feature
+    const exerciseDb = Object.fromEntries(
+      Object.entries(loadedDb).map(([id, def]) => {
+        const builtIn = DEFAULT_EXERCISE_DB[id];
+        if (builtIn && !def.area) {
+          return [id, { ...def, area: builtIn.area, muscleGroup: builtIn.muscleGroup }];
+        }
+        return [id, def];
+      }),
+    );
     const initial: FiveByFiveProgram = {
-      exerciseDb: (loaded as FiveByFiveProgram).exerciseDb ?? DEFAULT_EXERCISE_DB,
+      exerciseDb,
       plan: (loaded as FiveByFiveProgram).plan ?? DEFAULT_PLAN,
       sessions: (loaded as FiveByFiveProgram).sessions ?? [],
       activeSessionId: (loaded as FiveByFiveProgram).activeSessionId ?? null,
@@ -84,6 +97,8 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
             return {
               defId,
               name: def.name,
+              area: def.area,
+              muscleGroup: def.muscleGroup,
               numSets: def.numSets,
               weightLbs: def.weightLbs,
               targetReps: def.targetReps,
@@ -207,10 +222,10 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
           return next;
         }),
 
-      addExerciseToPlan: (workout, name, weightLbs = 45, numSets = 5) =>
+      addExerciseToPlan: (workout, name, weightLbs = 45, numSets = 5, area?, muscleGroup?) =>
         set((s) => {
           const newId = crypto.randomUUID();
-          const newDef = makeExDef(newId, name, weightLbs, numSets);
+          const newDef = makeExDef(newId, name, weightLbs, numSets, area, muscleGroup);
           const next: FiveByFiveProgram = {
             ...s,
             exerciseDb: { ...s.exerciseDb, [newId]: newDef },

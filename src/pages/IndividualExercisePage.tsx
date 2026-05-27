@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useIndivExerciseStore, todayDateKey } from '../stores/individualExerciseStore';
 import { useProfileStore } from '../stores/profileStore';
@@ -94,62 +94,66 @@ function SetRow({
   const weightDelta = unit === 'kg' ? 2.5 : 5;
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Set number */}
-      <span className="w-5 text-xs font-bold text-[var(--color-text-muted)] text-center shrink-0 select-none">
-        {index + 1}
-      </span>
+    <div className="bg-[var(--color-surface)] rounded-2xl p-3 space-y-2.5">
+      {/* Set header */}
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide select-none">
+          Set {index + 1}
+        </span>
+        <button
+          onClick={onRemove}
+          disabled={!canRemove}
+          className="w-6 h-6 flex items-center justify-center rounded-full text-[var(--color-text-muted)] active:text-[var(--color-danger)] disabled:opacity-20 transition-colors"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
 
       {/* Reps stepper */}
-      <div className="flex items-center flex-1 rounded-xl overflow-hidden border border-[var(--color-border)]">
-        <button
-          onClick={() => onChange({ reps: Math.max(1, data.reps - 1) })}
-          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-r border-[var(--color-border)]"
-        >−</button>
-        <NumericInput
-          value={data.reps}
-          onCommit={(v) => onChange({ reps: Math.max(1, Math.round(v)) })}
-          min={1}
-          placeholder="0"
-          className="flex-1 h-11 text-center text-base font-bold text-[var(--color-text)] bg-white focus:outline-none"
-        />
-        <button
-          onClick={() => onChange({ reps: data.reps + 1 })}
-          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-l border-[var(--color-border)]"
-        >+</button>
+      <div className="flex items-center gap-2">
+        <span className="w-14 text-xs font-semibold text-[var(--color-text-muted)] shrink-0 select-none">Reps</span>
+        <div className="flex-1 flex items-center rounded-xl overflow-hidden border border-[var(--color-border)] bg-white">
+          <button
+            onClick={() => onChange({ reps: Math.max(1, data.reps - 1) })}
+            className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-r border-[var(--color-border)]"
+          >−</button>
+          <NumericInput
+            value={data.reps}
+            onCommit={(v) => onChange({ reps: Math.max(1, Math.round(v)) })}
+            min={1}
+            placeholder="0"
+            className="flex-1 h-11 text-center text-base font-bold text-[var(--color-text)] bg-white focus:outline-none"
+          />
+          <button
+            onClick={() => onChange({ reps: data.reps + 1 })}
+            className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-l border-[var(--color-border)]"
+          >+</button>
+        </div>
       </div>
-
-      <span className="text-[var(--color-text-muted)] text-xs font-bold shrink-0 select-none">×</span>
 
       {/* Weight stepper */}
-      <div className="flex items-center flex-1 rounded-xl overflow-hidden border border-[var(--color-border)]">
-        <button
-          onClick={() => onChange({ weightDisplay: Math.max(0, +((data.weightDisplay - weightDelta).toFixed(2))) })}
-          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-r border-[var(--color-border)]"
-        >−</button>
-        <NumericInput
-          value={data.weightDisplay}
-          onCommit={(v) => onChange({ weightDisplay: Math.max(0, v) })}
-          min={0}
-          placeholder="0"
-          className="flex-1 h-11 text-center text-base font-bold text-[var(--color-text)] bg-white focus:outline-none"
-        />
-        <button
-          onClick={() => onChange({ weightDisplay: +((data.weightDisplay + weightDelta).toFixed(2)) })}
-          className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-l border-[var(--color-border)]"
-        >+</button>
+      <div className="flex items-center gap-2">
+        <span className="w-14 text-xs font-semibold text-[var(--color-text-muted)] shrink-0 select-none">Weight</span>
+        <div className="flex-1 flex items-center rounded-xl overflow-hidden border border-[var(--color-border)] bg-white">
+          <button
+            onClick={() => onChange({ weightDisplay: Math.max(0, +((data.weightDisplay - weightDelta).toFixed(2))) })}
+            className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-r border-[var(--color-border)]"
+          >−</button>
+          <NumericInput
+            value={data.weightDisplay}
+            onCommit={(v) => onChange({ weightDisplay: Math.max(0, v) })}
+            min={0}
+            placeholder="0"
+            className="flex-1 h-11 text-center text-base font-bold text-[var(--color-text)] bg-white focus:outline-none"
+          />
+          <button
+            onClick={() => onChange({ weightDisplay: +((data.weightDisplay + weightDelta).toFixed(2)) })}
+            className="w-11 h-11 shrink-0 flex items-center justify-center bg-[var(--color-surface)] text-xl font-bold text-[var(--color-text)] active:bg-[var(--color-border)] select-none border-l border-[var(--color-border)]"
+          >+</button>
+        </div>
       </div>
-
-      {/* Remove */}
-      <button
-        onClick={onRemove}
-        disabled={!canRemove}
-        className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-[var(--color-text-muted)] active:text-[var(--color-danger)] disabled:opacity-20"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
     </div>
   );
 }
@@ -181,6 +185,32 @@ function SetLoggerSheet({
     return [{ reps: 0, weightDisplay: 0 }];
   });
 
+  // Drag-to-close
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = useRef(0);
+
+  function handleDragStart(e: React.PointerEvent) {
+    dragStartY.current = e.clientY;
+    setIsDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function handleDragMove(e: React.PointerEvent) {
+    if (!isDragging) return;
+    const delta = e.clientY - dragStartY.current;
+    setDragY(Math.max(0, delta));
+  }
+
+  function handleDragEnd() {
+    setIsDragging(false);
+    if (dragY > 120) {
+      onClose();
+    } else {
+      setDragY(0);
+    }
+  }
+
   function handleChange(i: number, patch: Partial<SetRowData>) {
     setSets((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   }
@@ -209,13 +239,27 @@ function SetLoggerSheet({
 
   return (
     <>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        style={{ opacity: Math.max(0, 1 - dragY / 300) }}
+        onClick={onClose}
+      />
       <div
         className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '92dvh' }}
+        style={{
+          maxHeight: '92dvh',
+          transform: `translateY(${dragY}px)`,
+          transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.32,0.72,0,1)',
+        }}
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
+        {/* Handle — drag this to dismiss */}
+        <div
+          className="flex justify-center pt-3 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing select-none"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+        >
           <div className="w-10 h-1 bg-[var(--color-border)] rounded-full" />
         </div>
 
@@ -235,15 +279,6 @@ function SetLoggerSheet({
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-        </div>
-
-        {/* Column labels */}
-        <div className="flex items-center gap-2 px-5 pt-3 pb-1 shrink-0">
-          <span className="w-5 shrink-0" />
-          <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Reps</span>
-          <span className="text-[var(--color-text-muted)] text-xs shrink-0 opacity-0 select-none">×</span>
-          <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Weight ({unit})</span>
-          <span className="w-8 shrink-0" />
         </div>
 
         {/* Last time banner — compact single line */}
@@ -680,15 +715,6 @@ function EntryCard({
       {isExpanded && (
         <>
           <div className="mx-4 border-t border-[var(--color-border)]" />
-
-          {/* Column labels */}
-          <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-            <span className="w-5 shrink-0" />
-            <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Reps</span>
-            <span className="text-[var(--color-text-muted)] text-xs shrink-0 opacity-0 select-none">×</span>
-            <span className="flex-1 text-center text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Weight ({unit})</span>
-            <span className="w-8 shrink-0" />
-          </div>
 
           {/* Set rows */}
           <div className="px-4 pb-2 space-y-2.5">

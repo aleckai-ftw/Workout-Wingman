@@ -2,7 +2,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
 import { FloatingTimer } from './components/FloatingTimer';
 import { HomePage } from './pages/HomePage';
-import { TrackPage } from './pages/TrackPage';
+import { ProgramsPage } from './pages/TrackPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TimerPage } from './pages/TimerPage';
@@ -17,7 +17,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />
-          <Route path="/track" element={<TrackPage />} />
+          <Route path="/programs" element={<ProgramsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           {/* Detail pages (no bottom nav overlap issues — scrollable) */}

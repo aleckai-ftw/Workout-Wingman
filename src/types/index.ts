@@ -76,6 +76,8 @@ export type FxFSetState = 'pending' | 'done' | 'failed';
 export interface FxFExerciseDef {
   id: ID;
   name: string;
+  area?: string;                // e.g. "Chest" — used for muscle staleness tracking
+  muscleGroup?: string;         // e.g. "Pectorals"
   numSets: number;              // 5 normally; 1 for Deadlift
   weightLbs: number;            // current planned weight for next session
   targetReps: number;           // 5 normally, 7 after failure
@@ -96,6 +98,8 @@ export interface FxFSet {
 export interface FxFSessionExercise {
   defId: ID;            // links to FxFExerciseDef.id
   name: string;
+  area?: string;        // snapshot at session start
+  muscleGroup?: string; // snapshot at session start
   numSets: number;      // snapshot of numSets at session start
   weightLbs: number;    // snapshot at session start (may be bumped via +5)
   targetReps: number;   // snapshot at session start

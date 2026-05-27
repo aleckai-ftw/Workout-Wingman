@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { PageHeader } from '../components/PageHeader';
 import { useFiveByFiveStore } from '../stores/fiveByFiveStore';
 import { useTimerStore } from '../stores/timerStore';
+import { ALL_EXERCISE_AREAS, AREA_META } from '../data/exercises';
 import type { FxFExerciseDef, FxFSession, FxFSessionExercise, FxFSetState, FxFWorkoutKey } from '../types';
 
 // ─── Set Circle ───────────────────────────────────────────────────────────────
@@ -404,12 +405,13 @@ function WorkoutPlanCard({
   onToggleEdit: () => void;
   onDelete: (defId: string) => void;
   onWeightChange: (defId: string, w: number) => void;
-  onAddExercise: (name: string, weight: number, numSets: number) => void;
+  onAddExercise: (name: string, weight: number, numSets: number, area?: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
 }) {
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState('45');
   const [newNumSets, setNewNumSets] = useState(5);
+  const [newArea, setNewArea] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -427,21 +429,22 @@ function WorkoutPlanCard({
   }
 
   const PRESET_EXERCISES = [
-    { name: 'Squat', sets: 5 },
-    { name: 'Bench Press', sets: 5 },
-    { name: 'Barbell Row', sets: 5 },
-    { name: 'Overhead Press', sets: 5 },
-    { name: 'Deadlift', sets: 1 },
-    { name: 'Pull Up', sets: 5 },
-    { name: 'Chin Up', sets: 5 },
+    { name: 'Squat',          sets: 5, area: 'Quads' },
+    { name: 'Bench Press',    sets: 5, area: 'Chest' },
+    { name: 'Barbell Row',    sets: 5, area: 'Back' },
+    { name: 'Overhead Press', sets: 5, area: 'Shoulders' },
+    { name: 'Deadlift',       sets: 1, area: 'Lower Back' },
+    { name: 'Pull Up',        sets: 5, area: 'Back' },
+    { name: 'Chin Up',        sets: 5, area: 'Back' },
   ];
 
   function handleAdd() {
     if (!newName.trim()) return;
-    onAddExercise(newName.trim(), parseFloat(newWeight) || 45, newNumSets);
+    onAddExercise(newName.trim(), parseFloat(newWeight) || 45, newNumSets, newArea || undefined);
     setNewName('');
     setNewWeight('45');
     setNewNumSets(5);
+    setNewArea('');
   }
 
   const lastDate = lastSession
@@ -520,7 +523,7 @@ function WorkoutPlanCard({
             ).map((p) => (
               <button
                 key={p.name}
-                onClick={() => { setNewName(p.name); setNewNumSets(p.sets); }}
+                onClick={() => { setNewName(p.name); setNewNumSets(p.sets); setNewArea(p.area); }}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                   newName === p.name
                     ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white'
@@ -542,6 +545,27 @@ function WorkoutPlanCard({
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
           />
+
+          {/* Body area picker */}
+          <div className="overflow-x-auto -mx-1 pb-0.5">
+            <div className="flex gap-1.5 px-1" style={{ width: 'max-content' }}>
+              {ALL_EXERCISE_AREAS.filter((a) => a !== 'Full-Body').map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setNewArea(newArea === a ? '' : a)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${
+                    newArea === a
+                      ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] bg-white'
+                  }`}
+                >
+                  <span>{AREA_META[a as keyof typeof AREA_META]?.emoji}</span>
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Weight + sets row */}
           <div className="flex items-center gap-2">
@@ -712,7 +736,7 @@ export function FiveByFivePage() {
             }
             onDelete={(defId) => removeExerciseFromPlan(workout, defId)}
             onWeightChange={(defId, w) => setPlanExerciseWeight(workout, defId, w)}
-            onAddExercise={(name, weight, numSets) => addExerciseToPlan(workout, name, weight, numSets)}
+            onAddExercise={(name, weight, numSets, area) => addExerciseToPlan(workout, name, weight, numSets, area)}
             onReorder={(from, to) => reorderPlanExercises(workout, from, to)}
           />
         ))}

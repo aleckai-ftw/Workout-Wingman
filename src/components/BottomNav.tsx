@@ -1,20 +1,21 @@
 import { NavLink } from 'react-router-dom';
 
-const SupersetIcon = () => (
+const ProgramsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-    <rect x="2" y="10" width="4" height="4" rx="1" />
-    <rect x="18" y="10" width="4" height="4" rx="1" />
-    <line x1="6" y1="12" x2="18" y2="12" />
-    <rect x="7" y="8" width="3" height="8" rx="1" />
-    <rect x="14" y="8" width="3" height="8" rx="1" />
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
   </svg>
 );
 
-const FiveByFiveIcon = () => (
+const ExercisesIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-    <line x1="18" y1="20" x2="18" y2="10" />
-    <line x1="12" y1="20" x2="12" y2="4" />
-    <line x1="6" y1="20" x2="6" y2="14" />
+    <line x1="8" y1="12" x2="16" y2="12" />
+    <rect x="5" y="9" width="3" height="6" rx="1" />
+    <rect x="16" y="9" width="3" height="6" rx="1" />
+    <rect x="2" y="10" width="3" height="4" rx="0.5" />
+    <rect x="19" y="10" width="3" height="4" rx="0.5" />
   </svg>
 );
 
@@ -47,19 +48,19 @@ const HomeIcon = () => (
 type SideItem = { to: string; label: string; icon: React.ReactNode };
 
 const leftItems: SideItem[] = [
-  { to: '/superset', label: 'Supersets', icon: <SupersetIcon /> },
-  { to: '/5x5', label: '5×5', icon: <FiveByFiveIcon /> },
+  { to: '/programs', label: 'Programs', icon: <ProgramsIcon /> },
+  { to: '/exercises', label: 'Exercises', icon: <ExercisesIcon /> },
 ];
 
 const rightItems: SideItem[] = [
-  { to: '/protein', label: 'Protein', icon: <ProteinIcon /> },
+  { to: '/protein', label: 'Diet', icon: <ProteinIcon /> },
   { to: '/timer', label: 'Timer', icon: <TimerIcon /> },
 ];
 
 export function BottomNav() {
   return (
     <nav className="sticky bottom-0 left-0 right-0 bg-white border-t border-[var(--color-border)] z-[55]">
-      <div className="flex items-end justify-around h-16 px-2">
+      <div className="flex items-end h-16">
         {/* Left items */}
         {leftItems.map(({ to, label, icon }) => (
           <NavLink
@@ -67,7 +68,7 @@ export function BottomNav() {
             to={to}
             className={({ isActive }) =>
               [
-                'flex flex-col items-center gap-0.5 text-xs font-medium px-3 py-2 rounded-xl transition-colors',
+                'flex-1 flex flex-col items-center gap-0.5 text-xs font-medium py-2 rounded-xl transition-colors',
                 isActive
                   ? 'text-[var(--color-primary)]'
                   : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]',
@@ -85,7 +86,7 @@ export function BottomNav() {
           end
           className={({ isActive }) =>
             [
-              'flex flex-col items-center gap-1 text-xs font-bold px-1 -mt-5 transition-colors',
+              'flex-1 flex flex-col items-center gap-1 text-xs font-bold -mt-5 transition-colors',
               isActive ? 'text-white' : 'text-white',
             ].join(' ')
           }
@@ -113,7 +114,7 @@ export function BottomNav() {
             to={to}
             className={({ isActive }) =>
               [
-                'flex flex-col items-center gap-0.5 text-xs font-medium px-3 py-2 rounded-xl transition-colors',
+                'flex-1 flex flex-col items-center gap-0.5 text-xs font-medium py-2 rounded-xl transition-colors',
                 isActive
                   ? 'text-[var(--color-primary)]'
                   : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]',

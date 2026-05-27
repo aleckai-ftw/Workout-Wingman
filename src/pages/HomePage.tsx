@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useProfileStore } from '../stores/profileStore';
 import { useProteinStore, computeDayTotal, todayDateKey } from '../stores/proteinStore';
 import { useFoodStore, getAllFoods } from '../stores/foodStore';
 import { useFiveByFiveStore } from '../stores/fiveByFiveStore';
 import { useSupersetStore } from '../stores/supersetStore';
 import { useIndivExerciseStore, todayDateKey as indivTodayKey } from '../stores/individualExerciseStore';
+import { useMuscleStaleness, type StaleArea } from '../lib/muscleStaleness';
 import { AREA_META } from '../data/exercises';
 import type { IndivExerciseEntry } from '../types';
 
@@ -36,6 +37,16 @@ export function HomePage() {
   );
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const staleAreas = useMuscleStaleness();
+
+  const hasFxfHistory = useFiveByFiveStore((s) => s.sessions.some((sess) => sess.completed));
+  const hasSsHistory = useSupersetStore((s) => s.sessions.some((sess) => sess.completed));
+  const hasAnyHistory = allIndivEntries.length > 0 || hasFxfHistory || hasSsHistory;
+
+  const [dismissedAreas, setDismissedAreas] = useState<Set<string>>(new Set());
+  const dismiss = (area: string) => setDismissedAreas((prev) => new Set([...prev, area]));
+  const visibleStale = staleAreas.filter((a) => !dismissedAreas.has(a.area));
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -104,7 +115,7 @@ export function HomePage() {
           )}
         </div>
 
-        {/* ── Exercises section ───────────────────────────────────────────── */}
+        {/* ── Exercises section ────────────────────────────────────────── */}
         <section className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
           {/* Section header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
@@ -158,6 +169,58 @@ export function HomePage() {
           )}
         </section>
 
+        {/* ── Muscle coverage section ───────────────────────────────────── */}
+        <section className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)]">
+            <span className="text-base">🛡️</span>
+            <span className="font-semibold text-sm text-[var(--color-text)]">Muscle Coverage</span>
+            {hasAnyHistory && visibleStale.length > 0 && (
+              <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                {visibleStale.length} area{visibleStale.length !== 1 ? 's' : ''} behind
+              </span>
+            )}
+            {hasAnyHistory && visibleStale.length === 0 && (
+              <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                All good
+              </span>
+            )}
+          </div>
+
+          {!hasAnyHistory ? (
+            /* No history yet */
+            <div className="flex items-center gap-3 px-4 py-4">
+              <div className="w-8 h-8 rounded-full bg-[var(--color-border)] flex items-center justify-center shrink-0 text-sm">
+                📋
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[var(--color-text)]">No workouts logged yet</p>
+                <p className="text-xs text-[var(--color-text-muted)]">Start logging to track muscle group coverage.</p>
+              </div>
+            </div>
+          ) : visibleStale.length === 0 ? (
+            /* All good state */
+            <div className="flex items-center gap-3 px-4 py-4">
+              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4 text-green-600">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[var(--color-text)]">All muscle groups covered!</p>
+                <p className="text-xs text-[var(--color-text-muted)]">Great balance across the board. Keep it up.</p>
+              </div>
+            </div>
+          ) : (
+            /* Stale area rows */
+            <div className="divide-y divide-[var(--color-border)]">
+              {visibleStale.map((item) => (
+                <MuscleCoverageRow key={item.area} item={item} onDismiss={() => dismiss(item.area)} />
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* ── Motivational footer ─────────────────────────────────────────── */}
         <div className="bg-[var(--color-primary)] rounded-2xl p-4 flex items-center gap-3">
           <div className="flex-1">
@@ -170,7 +233,56 @@ export function HomePage() {
     </div>
   );
 }
+// ─── Muscle coverage row ─────────────────────────────────────────────────────
 
+function MuscleCoverageRow({ item, onDismiss }: { item: StaleArea; onDismiss: () => void }) {
+  const meta = AREA_META[item.area as keyof typeof AREA_META];
+  const isRed = item.daysAgo >= 7;
+
+  return (
+    <div className={`flex items-center gap-3 px-4 py-3 ${
+      isRed ? 'bg-red-50/60' : 'bg-amber-50/60'
+    }`}>
+      {/* Area icon */}
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${meta?.bgClass ?? 'bg-gray-100'}`}>
+        {meta?.emoji ?? '💪'}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-[var(--color-text)]">{item.area}</span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+            isRed ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+          }`}>
+            {item.daysAgo}d ago
+          </span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <Link to="/exercises" className="text-[10px] font-medium text-[var(--color-primary)]">
+            → {item.recommendedExercise}
+          </Link>
+          {item.recommendedSuperset && (
+            <Link to="/programs" className="text-[10px] text-[var(--color-text-muted)]">
+              · or {item.recommendedSuperset}
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* Dismiss */}
+      <button
+        onClick={onDismiss}
+        className="w-7 h-7 rounded-full flex items-center justify-center text-[var(--color-text-muted)] hover:bg-black/10 transition-colors shrink-0"
+        aria-label={`Dismiss ${item.area} warning`}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  );
+}
 // ─── Exercise entry row (inline on home) ──────────────────────────────────────
 
 function ExerciseEntryRow({ entry, unit }: { entry: IndivExerciseEntry; unit: 'lbs' | 'kg' }) {
