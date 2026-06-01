@@ -13,6 +13,7 @@ export interface AppSettings {
   defaultRestSeconds: number;     // rest timer default
   weightUnit: 'lbs' | 'kg';
   dailyProteinGoalG: number;
+  dailyCalorieGoal: number;
 }
 
 // ─── Protein Tracker ──────────────────────────────────────────────────────────
@@ -34,8 +35,9 @@ export interface FoodItem {
   id: ID;
   name: string;
   category: FoodCategory;
-  proteinPerServing: number; // grams
-  servingSize: string;       // descriptive, e.g. "1 breast (120g)"
+  proteinPerServing: number;  // grams
+  caloriesPerServing: number; // kcal
+  servingSize: string;        // descriptive, e.g. "1 breast (120g)"
   isCustom: boolean;
 }
 
@@ -46,10 +48,31 @@ export interface DailyServing {
   timestamp: string; // ISO-8601 — when first logged
 }
 
+export interface MealIngredient {
+  foodId: ID;
+  servings: number;
+}
+
+export interface Meal {
+  id: ID;
+  name: string;
+  ingredients: MealIngredient[];
+}
+
+export interface LoggedMealEntry {
+  id: ID;
+  mealId?: ID;        // reference to saved template, if any
+  name: string;       // snapshot of name at log time
+  ingredients: MealIngredient[];
+  timestamp: string;  // ISO-8601
+}
+
 export interface ProteinDay {
   date: string; // YYYY-MM-DD
   servings: DailyServing[];
+  meals: LoggedMealEntry[];
   goalG: number;
+  caloriesGoal: number;
 }
 
 // ─── Timer ────────────────────────────────────────────────────────────────────

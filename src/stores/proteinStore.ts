@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { DailyServing, FoodItem, ProteinDay } from '../types';
+import type { DailyServing, FoodItem, LoggedMealEntry, MealIngredient, ProteinDay } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
 
 const PROTEIN_KEY = 'ww_protein';
@@ -22,16 +22,41 @@ export function computeDayTotal(servings: DailyServing[], allFoods: FoodItem[]):
   }, 0);
 }
 
+export function computeDayCalories(servings: DailyServing[], allFoods: FoodItem[]): number {
+  return servings.reduce((sum, s) => {
+    const food = allFoods.find((f) => f.id === s.foodId);
+    return sum + (food ? food.caloriesPerServing * s.servings : 0);
+  }, 0);
+}
+
+export function computeMealProtein(meal: { ingredients: MealIngredient[] }, allFoods: FoodItem[]): number {
+  return meal.ingredients.reduce((sum, ing) => {
+    const food = allFoods.find((f) => f.id === ing.foodId);
+    return sum + (food ? food.proteinPerServing * ing.servings : 0);
+  }, 0);
+}
+
+export function computeMealCalories(meal: { ingredients: MealIngredient[] }, allFoods: FoodItem[]): number {
+  return meal.ingredients.reduce((sum, ing) => {
+    const food = allFoods.find((f) => f.id === ing.foodId);
+    return sum + (food ? food.caloriesPerServing * ing.servings : 0);
+  }, 0);
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 interface ProteinStore {
   days: Record<string, ProteinDay>;
   /** Add 1 serving of a food. If already logged today, increments existing entry. */
-  addServing: (foodId: string, defaultGoalG?: number) => void;
+  addServing: (foodId: string, defaultGoalG?: number, defaultCalorieGoal?: number) => void;
   /** Set exact serving count. Pass 0 to remove. */
   setServings: (date: string, servingId: string, count: number) => void;
   removeServing: (date: string, servingId: string) => void;
   setGoal: (date: string, goalG: number) => void;
+  setCalorieGoal: (date: string, caloriesGoal: number) => void;
+  logMeal: (name: string, ingredients: MealIngredient[], mealId?: string, defaultGoalG?: number, defaultCalorieGoal?: number) => void;
+  updateLoggedMeal: (date: string, entryId: string, ingredients: MealIngredient[]) => void;
+  removeLoggedMeal: (date: string, entryId: string) => void;
   todayServings: () => DailyServing[];
 }
 
@@ -43,18 +68,19 @@ function ensureDay(
   days: Record<string, ProteinDay>,
   date: string,
   goalG: number,
+  caloriesGoal: number,
 ): ProteinDay {
-  return days[date] ?? { date, servings: [], goalG };
+  return days[date] ?? { date, servings: [], meals: [], goalG, caloriesGoal };
 }
 
 export const useProteinStore = create<ProteinStore>()(
   subscribeWithSelector((set, get) => ({
     days: loadFromStorage(PROTEIN_KEY, {}),
 
-    addServing: (foodId, defaultGoalG = 180) =>
+    addServing: (foodId, defaultGoalG = 180, defaultCalorieGoal = 2000) =>
       set((s) => {
         const date = todayDateKey();
-        const day = ensureDay(s.days, date, defaultGoalG);
+        const day = ensureDay(s.days, date, defaultGoalG, defaultCalorieGoal);
         const existing = day.servings.find((sv) => sv.foodId === foodId);
 
         let updatedServings: DailyServing[];
@@ -111,8 +137,68 @@ export const useProteinStore = create<ProteinStore>()(
 
     setGoal: (date, goalG) =>
       set((s) => {
-        const day = ensureDay(s.days, date, goalG);
+        const day = ensureDay(s.days, date, goalG, 2000);
         const next = { ...s.days, [date]: { ...day, goalG } };
+        persist(next);
+        return { days: next };
+      }),
+
+    setCalorieGoal: (date, caloriesGoal) =>
+      set((s) => {
+        const existing = s.days[date];
+        if (!existing) return {};
+        const next = { ...s.days, [date]: { ...existing, caloriesGoal } };
+        persist(next);
+        return { days: next };
+      }),
+
+    logMeal: (name, ingredients, mealId, defaultGoalG = 180, defaultCalorieGoal = 2000) =>
+      set((s) => {
+        const date = todayDateKey();
+        const day = ensureDay(s.days, date, defaultGoalG, defaultCalorieGoal);
+        const entry: LoggedMealEntry = {
+          id: crypto.randomUUID(),
+          mealId,
+          name,
+          ingredients,
+          timestamp: new Date().toISOString(),
+        };
+        const next = {
+          ...s.days,
+          [date]: { ...day, meals: [...(day.meals ?? []), entry] },
+        };
+        persist(next);
+        return { days: next };
+      }),
+
+    updateLoggedMeal: (date, entryId, ingredients) =>
+      set((s) => {
+        const day = s.days[date];
+        if (!day) return {};
+        const next = {
+          ...s.days,
+          [date]: {
+            ...day,
+            meals: (day.meals ?? []).map((m) =>
+              m.id === entryId ? { ...m, ingredients } : m
+            ),
+          },
+        };
+        persist(next);
+        return { days: next };
+      }),
+
+    removeLoggedMeal: (date, entryId) =>
+      set((s) => {
+        const day = s.days[date];
+        if (!day) return {};
+        const next = {
+          ...s.days,
+          [date]: {
+            ...day,
+            meals: (day.meals ?? []).filter((m) => m.id !== entryId),
+          },
+        };
         persist(next);
         return { days: next };
       }),

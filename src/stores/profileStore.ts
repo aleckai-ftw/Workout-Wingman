@@ -15,6 +15,7 @@ const defaultSettings: AppSettings = {
   defaultRestSeconds: 90,
   weightUnit: 'lbs',
   dailyProteinGoalG: 180,
+  dailyCalorieGoal: 2000,
 };
 
 interface ProfileStore {
