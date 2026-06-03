@@ -21,17 +21,18 @@ function makeExDef(
   numSets = 5,
   area?: string,
   muscleGroup?: string,
+  areas?: string[],
 ): FxFExerciseDef {
-  return { id, name, numSets, weightLbs, targetReps: 5, lastWeightLbs: null, lastOutcome: null, area, muscleGroup };
+  return { id, name, numSets, weightLbs, targetReps: 5, lastWeightLbs: null, lastOutcome: null, area, muscleGroup, areas };
 }
 
 // Stable IDs — Squat appears in both A & B and shares the same entry
 export const DEFAULT_EXERCISE_DB: Record<string, FxFExerciseDef> = {
-  squat:    makeExDef('squat',    'Squat',           45, 5, 'Quads',      'Quadriceps'),
-  bench:    makeExDef('bench',    'Bench Press',     45, 5, 'Chest',      'Pectorals'),
-  row:      makeExDef('row',      'Barbell Row',     45, 5, 'Back',       'Lats / Rhomboids'),
-  ohp:      makeExDef('ohp',      'Overhead Press',  45, 5, 'Shoulders',  'Front / Side Delts'),
-  deadlift: makeExDef('deadlift', 'Deadlift',        45, 1, 'Lower Back', 'Spinal Erectors'),
+  squat:    makeExDef('squat',    'Squat',           45, 5, 'Quads',      'Quadriceps',        ['Quads', 'Glutes', 'Hamstrings', 'Lower Back']),
+  bench:    makeExDef('bench',    'Bench Press',     45, 5, 'Chest',      'Pectorals',         ['Chest', 'Triceps', 'Shoulders']),
+  row:      makeExDef('row',      'Barbell Row',     45, 5, 'Back',       'Lats / Rhomboids',  ['Back', 'Biceps', 'Lower Back']),
+  ohp:      makeExDef('ohp',      'Overhead Press',  45, 5, 'Shoulders',  'Front / Side Delts',['Shoulders', 'Triceps']),
+  deadlift: makeExDef('deadlift', 'Deadlift',        45, 1, 'Lower Back', 'Spinal Erectors',   ['Lower Back', 'Back', 'Hamstrings', 'Glutes', 'Quads']),
 };
 
 const DEFAULT_PLAN: FxFPlan = {
@@ -64,12 +65,12 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
   subscribeWithSelector((set, get) => {
     const loaded = loadFromStorage<Partial<FiveByFiveProgram>>(KEY, {});
     const loadedDb = (loaded as FiveByFiveProgram).exerciseDb ?? DEFAULT_EXERCISE_DB;
-    // Backfill area/muscleGroup for built-in exercises that predate this feature
+    // Backfill area/muscleGroup/areas for built-in exercises that predate this feature
     const exerciseDb = Object.fromEntries(
       Object.entries(loadedDb).map(([id, def]) => {
         const builtIn = DEFAULT_EXERCISE_DB[id];
-        if (builtIn && !def.area) {
-          return [id, { ...def, area: builtIn.area, muscleGroup: builtIn.muscleGroup }];
+        if (builtIn) {
+          return [id, { ...def, area: def.area ?? builtIn.area, muscleGroup: def.muscleGroup ?? builtIn.muscleGroup, areas: def.areas ?? builtIn.areas }];
         }
         return [id, def];
       }),
@@ -99,6 +100,7 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
               name: def.name,
               area: def.area,
               muscleGroup: def.muscleGroup,
+              areas: def.areas,
               numSets: def.numSets,
               weightLbs: def.weightLbs,
               targetReps: def.targetReps,
