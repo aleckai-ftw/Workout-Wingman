@@ -26,7 +26,7 @@ function makeExDef(
 }
 
 // Stable IDs — Squat appears in both A & B and shares the same entry
-const DEFAULT_EXERCISE_DB: Record<string, FxFExerciseDef> = {
+export const DEFAULT_EXERCISE_DB: Record<string, FxFExerciseDef> = {
   squat:    makeExDef('squat',    'Squat',           45, 5, 'Quads',      'Quadriceps'),
   bench:    makeExDef('bench',    'Bench Press',     45, 5, 'Chest',      'Pectorals'),
   row:      makeExDef('row',      'Barbell Row',     45, 5, 'Back',       'Lats / Rhomboids'),

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useIndivExerciseStore } from '../stores/individualExerciseStore';
-import { useFiveByFiveStore } from '../stores/fiveByFiveStore';
+import { useFiveByFiveStore, DEFAULT_EXERCISE_DB as FXF_DEFAULT_DB } from '../stores/fiveByFiveStore';
 import { useSupersetStore } from '../stores/supersetStore';
 import { BUILT_IN_EXERCISES, ALL_EXERCISE_AREAS } from '../data/exercises';
 import { BUILT_IN_SS_DEFS } from '../data/supersets';
@@ -99,12 +99,13 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
       if (entry.area) update(entry.area, entry.date);
     }
 
-    // 2. Completed 5×5 sessions — use snapshotted area or fall back to exerciseDb
+    // 2. Completed 5×5 sessions — use snapshotted area, fall back to persisted db,
+    //    then fall back to hardcoded defaults (covers old localStorage data missing area)
     for (const session of fxfSessions) {
       if (!session.completed) continue;
       const date = session.date.slice(0, 10);
       for (const ex of session.exercises) {
-        const area = ex.area ?? fxfExerciseDb[ex.defId]?.area;
+        const area = ex.area ?? fxfExerciseDb[ex.defId]?.area ?? FXF_DEFAULT_DB[ex.defId]?.area;
         if (area) update(area, date);
       }
     }
