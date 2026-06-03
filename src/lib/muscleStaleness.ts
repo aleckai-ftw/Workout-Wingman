@@ -17,6 +17,14 @@ const SS_MG_FALLBACK_AREAS: Record<string, ExerciseArea[]> = {
   core_glutes:      ['Core', 'Glutes'],
 };
 
+const SS_MG_LABELS: Record<string, string> = {
+  chest_back: 'Chest / Back',
+  biceps_triceps: 'Biceps / Triceps',
+  quads_hamstrings: 'Quads / Hamstrings',
+  shoulders_traps: 'Shoulders / Traps',
+  core_glutes: 'Core / Glutes',
+};
+
 // Area → best matching superset muscleGroup key (for recommendations)
 const AREA_TO_SS_MG: Partial<Record<ExerciseArea, string>> = {
   Chest:      'chest_back',
@@ -65,10 +73,77 @@ function getRecommendation(area: ExerciseArea): {
   };
 }
 
+function normalizeLookupName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function singularizeToken(token: string): string {
+  if (token.endsWith('ies') && token.length > 3) return `${token.slice(0, -3)}y`;
+  if (token.endsWith('ses') && token.length > 3) return token.slice(0, -2);
+  if (token.endsWith('s') && !token.endsWith('ss') && token.length > 3) return token.slice(0, -1);
+  return token;
+}
+
+function singularizePhrase(phrase: string): string {
+  return phrase
+    .split(' ')
+    .map(singularizeToken)
+    .join(' ')
+    .trim();
+}
+
+const BUILT_IN_EXERCISE_BY_NORMALIZED_NAME: Record<string, (typeof BUILT_IN_EXERCISES)[number]> =
+  Object.fromEntries(
+    BUILT_IN_EXERCISES.flatMap((e) => {
+      const normalized = normalizeLookupName(e.name);
+      const singular = singularizePhrase(normalized);
+      return [
+        [normalized, e],
+        [singular, e],
+      ];
+    }),
+  );
+
+function normalizeMuscleGroupKey(muscleGroup: string): string {
+  const trimmed = muscleGroup.trim();
+  if (!trimmed) return '';
+  if (SS_MG_LABELS[trimmed]) return trimmed;
+  if (trimmed in SS_MG_LABELS) return trimmed;
+
+  const normalized = normalizeLookupName(trimmed);
+  const singular = singularizePhrase(normalized);
+
+  for (const [key, label] of Object.entries(SS_MG_LABELS)) {
+    const labelNorm = normalizeLookupName(label);
+    if (normalized === labelNorm || singular === singularizePhrase(labelNorm)) return key;
+  }
+
+  return singular;
+}
+
+const AREA_TO_MUSCLE_INDICATORS: Record<ExerciseArea, string[]> = Object.fromEntries(
+  ALL_EXERCISE_AREAS.map((area) => {
+    const indicators = BUILT_IN_EXERCISES
+      .filter((e) => e.areas.includes(area))
+      .map((e) => normalizeMuscleGroupKey(e.muscleGroup))
+      .filter((v) => v.length > 0);
+    return [area, Array.from(new Set(indicators))];
+  }),
+) as Record<ExerciseArea, string[]>;
+
 /** Resolve the areas worked by a named exercise. Looks up by name in built-ins,
  *  falls back to the provided fallbackAreas (e.g. from the superset group map). */
 function areasForExerciseName(name: string, fallbackAreas: ExerciseArea[]): ExerciseArea[] {
-  const match = BUILT_IN_EXERCISE_BY_NAME[name.toLowerCase()];
+  const direct = BUILT_IN_EXERCISE_BY_NAME[name.toLowerCase()];
+  const normalized = normalizeLookupName(name);
+  const singular = singularizePhrase(normalized);
+  const match = direct ?? BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[normalized] ?? BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[singular];
   return match ? (match.areas as ExerciseArea[]) : fallbackAreas;
 }
 
@@ -94,55 +169,90 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
 
     if (!hasAnyHistory) return [];
 
-    const lastWorked = new Map<string, string>(); // area → YYYY-MM-DD
+    const lastWorkedByMuscleIndicator = new Map<string, string>(); // muscle indicator → YYYY-MM-DD
+    const fallbackLastWorkedByArea = new Map<string, string>(); // area → YYYY-MM-DD
 
-    function update(area: string, date: string) {
+    function updateMap(map: Map<string, string>, key: string, date: string) {
+      if (!key) return;
       const d = date.slice(0, 10);
-      const prev = lastWorked.get(area);
-      if (!prev || d > prev) lastWorked.set(area, d);
+      const prev = map.get(key);
+      if (!prev || d > prev) map.set(key, d);
     }
 
-    function updateAreas(areas: ExerciseArea[], date: string) {
-      for (const area of areas) update(area, date);
+    function updateAreasFallback(areas: ExerciseArea[], date: string) {
+      for (const area of areas) updateMap(fallbackLastWorkedByArea, area, date);
     }
 
-    // 1. Individual exercise entries — look up full areas[] by defId, fall back to entry.area
+    function updateMuscleIndicator(muscleGroup: string | undefined, date: string) {
+      if (!muscleGroup) return;
+      const key = normalizeMuscleGroupKey(muscleGroup);
+      if (!key) return;
+      updateMap(lastWorkedByMuscleIndicator, key, date);
+    }
+
+    // 1. Individual entries — use muscleGroup first, area fallback second
     for (const entry of indivEntries) {
       const builtIn = entry.defId ? BUILT_IN_EXERCISE_BY_ID[entry.defId] : null;
       if (builtIn) {
-        updateAreas(builtIn.areas as ExerciseArea[], entry.date);
-      } else if (entry.area) {
-        update(entry.area, entry.date);
+        updateMuscleIndicator(builtIn.muscleGroup, entry.date);
+        updateAreasFallback(builtIn.areas as ExerciseArea[], entry.date);
+      } else {
+        updateMuscleIndicator(entry.muscleGroup, entry.date);
+        if (entry.area) updateMap(fallbackLastWorkedByArea, entry.area, entry.date);
       }
     }
 
-    // 2. Completed 5×5 sessions — use areas[] snapshot, fall back to DEFAULT_EXERCISE_DB,
-    //    then to single area (covers old localStorage data and custom exercises)
+    // 2. Completed 5x5 sessions — muscleGroup first, then area fallback
     for (const session of fxfSessions) {
       if (!session.completed) continue;
       const date = session.date.slice(0, 10);
       for (const ex of session.exercises) {
+        const fallbackDef = FXF_DEFAULT_DB[ex.defId];
+        updateMuscleIndicator(ex.muscleGroup ?? fallbackDef?.muscleGroup, date);
+
         const areas =
           (ex.areas as ExerciseArea[] | undefined) ??
-          (FXF_DEFAULT_DB[ex.defId]?.areas as ExerciseArea[] | undefined);
+          (fallbackDef?.areas as ExerciseArea[] | undefined);
         if (areas?.length) {
-          updateAreas(areas, date);
+          updateAreasFallback(areas, date);
         } else {
-          const fallbackArea = ex.area ?? FXF_DEFAULT_DB[ex.defId]?.area;
-          if (fallbackArea) update(fallbackArea, date);
+          const fallbackArea = ex.area ?? fallbackDef?.area;
+          if (fallbackArea) updateMap(fallbackLastWorkedByArea, fallbackArea, date);
         }
       }
     }
 
-    // 3. Completed superset sessions — look up each individual exercise by name
-    //    to get its specific areas[]; fall back to group-level map for custom exercises
+    // 3. Completed superset sessions — per-exercise muscleGroup first, then area fallback
     for (const session of ssSessions) {
       if (!session.completed) continue;
       const date = session.date.slice(0, 10);
       for (const entry of session.entries) {
         const fallback = SS_MG_FALLBACK_AREAS[entry.muscleGroup] ?? [];
-        updateAreas(areasForExerciseName(entry.exerciseAName, fallback), date);
-        updateAreas(areasForExerciseName(entry.exerciseBName, fallback), date);
+
+        const aBuiltIn = (() => {
+          const normalized = normalizeLookupName(entry.exerciseAName);
+          const singular = singularizePhrase(normalized);
+          return (
+            BUILT_IN_EXERCISE_BY_NAME[entry.exerciseAName.toLowerCase()] ??
+            BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[normalized] ??
+            BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[singular]
+          );
+        })();
+        const bBuiltIn = (() => {
+          const normalized = normalizeLookupName(entry.exerciseBName);
+          const singular = singularizePhrase(normalized);
+          return (
+            BUILT_IN_EXERCISE_BY_NAME[entry.exerciseBName.toLowerCase()] ??
+            BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[normalized] ??
+            BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[singular]
+          );
+        })();
+
+        updateMuscleIndicator(aBuiltIn?.muscleGroup ?? entry.muscleGroup, date);
+        updateMuscleIndicator(bBuiltIn?.muscleGroup ?? entry.muscleGroup, date);
+
+        updateAreasFallback(areasForExerciseName(entry.exerciseAName, fallback), date);
+        updateAreasFallback(areasForExerciseName(entry.exerciseBName, fallback), date);
       }
     }
 
@@ -152,7 +262,15 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
     for (const area of ALL_EXERCISE_AREAS) {
       if (area === 'Full-Body') continue;
 
-      const lastDate = lastWorked.get(area);
+      const indicatorDates = AREA_TO_MUSCLE_INDICATORS[area]
+        .map((indicator) => lastWorkedByMuscleIndicator.get(indicator))
+        .filter((d): d is string => Boolean(d));
+
+      const muscleDrivenLastDate = indicatorDates.length
+        ? indicatorDates.reduce((latest, current) => (current > latest ? current : latest), indicatorDates[0])
+        : null;
+
+      const lastDate = muscleDrivenLastDate ?? fallbackLastWorkedByArea.get(area);
       if (!lastDate) continue; // never worked — no warning yet
 
       const daysAgo = daysBetween(lastDate, today);
