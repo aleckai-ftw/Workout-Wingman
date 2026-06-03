@@ -13,7 +13,7 @@ const SS_MG_TO_AREAS: Record<string, ExerciseArea[]> = {
   biceps_triceps:   ['Biceps', 'Triceps'],
   quads_hamstrings: ['Quads', 'Hamstrings'],
   shoulders_traps:  ['Shoulders'],
-  core_glutes:      ['Core', 'Glutes', 'Lower Back'],
+  core_glutes:      ['Core', 'Glutes', 'Lower Back', 'Hamstrings'],
 };
 
 // Area → best matching superset muscleGroup key (for recommendations)
@@ -72,9 +72,10 @@ function getRecommendation(area: ExerciseArea): {
  * once (new users with no history see no warnings).
  */
 export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
-  const indivEntries = useIndivExerciseStore((s) => s.entries);
-  const fxfSessions  = useFiveByFiveStore((s) => s.sessions);
-  const ssSessions   = useSupersetStore((s) => s.sessions);
+  const indivEntries  = useIndivExerciseStore((s) => s.entries);
+  const fxfSessions   = useFiveByFiveStore((s) => s.sessions);
+  const fxfExerciseDb = useFiveByFiveStore((s) => s.exerciseDb);
+  const ssSessions    = useSupersetStore((s) => s.sessions);
 
   return useMemo(() => {
     // Don't warn if the user has never logged anything
@@ -98,12 +99,13 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
       if (entry.area) update(entry.area, entry.date);
     }
 
-    // 2. Completed 5×5 sessions — exercises snapshot area if set
+    // 2. Completed 5×5 sessions — use snapshotted area or fall back to exerciseDb
     for (const session of fxfSessions) {
       if (!session.completed) continue;
       const date = session.date.slice(0, 10);
       for (const ex of session.exercises) {
-        if (ex.area) update(ex.area, date);
+        const area = ex.area ?? fxfExerciseDb[ex.defId]?.area;
+        if (area) update(area, date);
       }
     }
 
@@ -136,5 +138,5 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
     stale.sort((a, b) => b.daysAgo - a.daysAgo);
 
     return stale;
-  }, [indivEntries, fxfSessions, ssSessions, thresholdDays]);
+  }, [indivEntries, fxfSessions, fxfExerciseDb, ssSessions, thresholdDays]);
 }
