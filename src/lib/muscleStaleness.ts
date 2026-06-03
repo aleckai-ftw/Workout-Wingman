@@ -13,7 +13,7 @@ const SS_MG_TO_AREAS: Record<string, ExerciseArea[]> = {
   biceps_triceps:   ['Biceps', 'Triceps'],
   quads_hamstrings: ['Quads', 'Hamstrings'],
   shoulders_traps:  ['Shoulders'],
-  core_glutes:      ['Core', 'Glutes'],
+  core_glutes:      ['Core', 'Glutes', 'Lower Back'],
 };
 
 // Area → best matching superset muscleGroup key (for recommendations)
