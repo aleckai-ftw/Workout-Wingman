@@ -273,3 +273,31 @@ export interface IndivExerciseState {
   entries: IndivExerciseEntry[];
   customDefs: IndivExerciseDef[];
 }
+
+// ─── Master Exercise Registry ────────────────────────────────────────────────
+
+export type ExercisePerformanceMode = 'individual' | '5x5' | 'superset';
+export type ExercisePerformanceOutcome = 'success' | 'failure' | null;
+
+export interface ExerciseLastPerformance {
+  weightLbs: number | null;
+  reps: number | null;
+  outcome: ExercisePerformanceOutcome;
+  at: string; // ISO-8601
+}
+
+export interface ExerciseMaster {
+  id: ID;
+  name: string;
+  primaryArea: string;
+  areas: string[];
+  primaryMuscleGroup: string;
+  muscleGroups: string[];
+  source: 'built-in' | 'custom';
+  aliases: string[];
+  lastPerformance: {
+    global: ExerciseLastPerformance | null;
+    byMode: Record<ExercisePerformanceMode, ExerciseLastPerformance | null>;
+  };
+  updatedAt: string; // ISO-8601
+}

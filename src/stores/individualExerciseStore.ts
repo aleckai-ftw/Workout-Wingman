@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import type { IndivExerciseDef, IndivExerciseEntry, IndivSet } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
 import { BUILT_IN_EXERCISES } from '../data/exercises';
+import { recordMasterPerformance, syncMasterExerciseMetadata } from './exerciseMasterStore';
 
 const STORAGE_KEY = 'ww_indiv_exercises';
 
@@ -89,6 +90,15 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
 
       logExercise: (defId, name, area, muscleGroup, rawSets) =>
         set((s) => {
+          const canonicalId = syncMasterExerciseMetadata({
+            id: defId,
+            name,
+            primaryArea: area,
+            areas: [area],
+            primaryMuscleGroup: muscleGroup,
+            muscleGroups: [muscleGroup],
+            source: 'custom',
+          });
           const date = todayDateKey();
           const sets: IndivSet[] = rawSets.map((rs) => ({
             id: crypto.randomUUID(),
@@ -97,7 +107,7 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
           }));
           const entry: IndivExerciseEntry = {
             id: crypto.randomUUID(),
-            defId,
+            defId: canonicalId,
             name,
             area,
             muscleGroup,
@@ -110,6 +120,15 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
             entries: [...s.entries, entry],
           };
           persist(next);
+          const lastSet = sets[sets.length - 1];
+          recordMasterPerformance({
+            exerciseId: canonicalId,
+            mode: 'individual',
+            weightLbs: lastSet?.weightLbs ?? null,
+            reps: lastSet?.reps ?? null,
+            outcome: null,
+            at: entry.timestamp,
+          });
           return next;
         }),
 
@@ -198,13 +217,16 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
         }),
 
       addCustomDef: (name, area, muscleGroup) => {
-        const def: IndivExerciseDef = {
+        const id = syncMasterExerciseMetadata({
           id: crypto.randomUUID(),
           name,
-          area,
-          muscleGroup,
-          isCustom: true,
-        };
+          primaryArea: area,
+          areas: [area],
+          primaryMuscleGroup: muscleGroup,
+          muscleGroups: [muscleGroup],
+          source: 'custom',
+        });
+        const def: IndivExerciseDef = { id, name, area, muscleGroup, isCustom: true };
         set((s) => {
           const next: PersistedState = {
             ...s,

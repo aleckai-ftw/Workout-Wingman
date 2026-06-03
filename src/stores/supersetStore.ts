@@ -13,6 +13,7 @@ import type {
 } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
 import { BUILT_IN_EXERCISE_DB, ssExSlug } from '../data/supersets';
+import { recordMasterPerformance, syncMasterExerciseMetadata } from './exerciseMasterStore';
 
 const KEY = 'ww_superset_v3'; // bumped — exerciseDb replaces defStates
 const DEFAULT_WEIGHT = 45;
@@ -127,6 +128,16 @@ export const useSupersetStore = create<SupersetStore>()(
       activeSessionId: (loaded as SupersetProgram).activeSessionId ?? null,
       workoutTemplates: (loaded as SupersetProgram).workoutTemplates ?? [],
     };
+
+    for (const ex of Object.values(mergedDb)) {
+      syncMasterExerciseMetadata({
+        id: ex.id,
+        name: ex.name,
+        primaryMuscleGroup: ex.muscleGroup,
+        muscleGroups: ex.muscleGroup ? [ex.muscleGroup] : [],
+        source: 'custom',
+      });
+    }
 
     return {
       ...initial,
@@ -270,6 +281,13 @@ export const useSupersetStore = create<SupersetStore>()(
               lastOutcome: outcomeA ?? prevA.lastOutcome,
               targetReps: entry.targetRepsA,
             };
+            recordMasterPerformance({
+              exerciseId: entry.exerciseAId,
+              mode: 'superset',
+              weightLbs: entry.weightA,
+              reps: entry.targetRepsA,
+              outcome: outcomeA,
+            });
             const prevB = getExercise(newDb, entry.exerciseBId);
             newDb[entry.exerciseBId] = {
               ...prevB,
@@ -278,6 +296,13 @@ export const useSupersetStore = create<SupersetStore>()(
               lastOutcome: outcomeB ?? prevB.lastOutcome,
               targetReps: entry.targetRepsB,
             };
+            recordMasterPerformance({
+              exerciseId: entry.exerciseBId,
+              mode: 'superset',
+              weightLbs: entry.weightB,
+              reps: entry.targetRepsB,
+              outcome: outcomeB,
+            });
           }
 
           const sessions = s.sessions.map((ss) =>
@@ -309,6 +334,13 @@ export const useSupersetStore = create<SupersetStore>()(
         set((s) => {
           if (s.exerciseDb[id]) return s;
           const newEx: SsExercise = { id, name, muscleGroup, weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
+          syncMasterExerciseMetadata({
+            id,
+            name,
+            primaryMuscleGroup: muscleGroup,
+            muscleGroups: muscleGroup ? [muscleGroup] : [],
+            source: 'custom',
+          });
           const next: SupersetProgram = { ...s, exerciseDb: { ...s.exerciseDb, [id]: newEx } };
           persist(next);
           return next;
@@ -368,6 +400,13 @@ export const useSupersetStore = create<SupersetStore>()(
         const existing = get().exerciseDb[id];
         if (existing) return existing;
         const newEx: SsExercise = { id, name, muscleGroup, weightLbs, lastWeightLbs: null, lastOutcome: null, targetReps };
+        syncMasterExerciseMetadata({
+          id,
+          name,
+          primaryMuscleGroup: muscleGroup,
+          muscleGroups: muscleGroup ? [muscleGroup] : [],
+          source: 'custom',
+        });
         set((s) => {
           const next: SupersetProgram = { ...s, exerciseDb: { ...s.exerciseDb, [id]: newEx } };
           persist(next);

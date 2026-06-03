@@ -10,6 +10,7 @@ import type {
   FxFWorkoutKey,
 } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
+import { recordMasterPerformance, syncMasterExerciseMetadata } from './exerciseMasterStore';
 
 const KEY = 'ww_5x5_v3'; // bumped — clean slate; exerciseDb is now shared
 const FAILURE_REPS = 7;
@@ -81,6 +82,18 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
       sessions: (loaded as FiveByFiveProgram).sessions ?? [],
       activeSessionId: (loaded as FiveByFiveProgram).activeSessionId ?? null,
     };
+
+    for (const def of Object.values(exerciseDb)) {
+      syncMasterExerciseMetadata({
+        id: def.id,
+        name: def.name,
+        primaryArea: def.area,
+        areas: def.areas,
+        primaryMuscleGroup: def.muscleGroup,
+        muscleGroups: def.muscleGroup ? [def.muscleGroup] : [],
+        source: 'custom',
+      });
+    }
 
     return {
       ...initial,
@@ -181,6 +194,13 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
                 lastWeightLbs: ex.weightLbs,
                 lastOutcome: 'failure',
               };
+              recordMasterPerformance({
+                exerciseId: ex.defId,
+                mode: '5x5',
+                weightLbs: ex.weightLbs,
+                reps: ex.targetReps,
+                outcome: 'failure',
+              });
             } else if (allDone) {
               updatedDb[ex.defId] = {
                 ...current,
@@ -189,12 +209,26 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
                 lastWeightLbs: ex.weightLbs,
                 lastOutcome: 'success',
               };
+              recordMasterPerformance({
+                exerciseId: ex.defId,
+                mode: '5x5',
+                weightLbs: ex.weightLbs,
+                reps: ex.targetReps,
+                outcome: 'success',
+              });
             } else {
               updatedDb[ex.defId] = {
                 ...current,
                 lastWeightLbs: ex.weightLbs,
                 lastOutcome: null,
               };
+              recordMasterPerformance({
+                exerciseId: ex.defId,
+                mode: '5x5',
+                weightLbs: ex.weightLbs,
+                reps: ex.targetReps,
+                outcome: null,
+              });
             }
           });
 
@@ -226,7 +260,15 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
 
       addExerciseToPlan: (workout, name, weightLbs = 45, numSets = 5, area?, muscleGroup?) =>
         set((s) => {
-          const newId = crypto.randomUUID();
+          const newId = syncMasterExerciseMetadata({
+            id: crypto.randomUUID(),
+            name,
+            primaryArea: area,
+            areas: area ? [area] : [],
+            primaryMuscleGroup: muscleGroup,
+            muscleGroups: muscleGroup ? [muscleGroup] : [],
+            source: 'custom',
+          });
           const newDef = makeExDef(newId, name, weightLbs, numSets, area, muscleGroup);
           const next: FiveByFiveProgram = {
             ...s,
@@ -287,7 +329,11 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
           if (existingDef) {
             defId = existingDef.id;
           } else {
-            defId = crypto.randomUUID();
+            defId = syncMasterExerciseMetadata({
+              id: crypto.randomUUID(),
+              name,
+              source: 'custom',
+            });
             const newDef = makeExDef(defId, name, weightLbs, numSets);
             updatedDb = { ...s.exerciseDb, [defId]: newDef };
           }
