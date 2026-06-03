@@ -133,6 +133,12 @@ const AREA_TO_MUSCLE_INDICATORS: Record<ExerciseArea, string[]> = Object.fromEnt
       .filter((e) => e.areas.includes(area))
       .map((e) => normalizeMuscleGroupKey(e.muscleGroup))
       .filter((v) => v.length > 0);
+
+    // Include superset muscle-group bucket keys so superset-only records
+    // (e.g. chest_back) can directly contribute to area freshness.
+    const ssGroupKey = AREA_TO_SS_MG[area];
+    if (ssGroupKey) indicators.push(normalizeMuscleGroupKey(ssGroupKey));
+
     return [area, Array.from(new Set(indicators))];
   }),
 ) as Record<ExerciseArea, string[]>;
@@ -270,7 +276,13 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
         ? indicatorDates.reduce((latest, current) => (current > latest ? current : latest), indicatorDates[0])
         : null;
 
-      const lastDate = muscleDrivenLastDate ?? fallbackLastWorkedByArea.get(area);
+      const fallbackLastDate = fallbackLastWorkedByArea.get(area) ?? null;
+      // Muscle indicators are primary, but fallback area signals should still
+      // rescue freshness when they're newer due naming/category mismatches.
+      const lastDate =
+        muscleDrivenLastDate && fallbackLastDate
+          ? (muscleDrivenLastDate > fallbackLastDate ? muscleDrivenLastDate : fallbackLastDate)
+          : (muscleDrivenLastDate ?? fallbackLastDate);
       if (!lastDate) continue; // never worked — no warning yet
 
       const daysAgo = daysBetween(lastDate, today);
