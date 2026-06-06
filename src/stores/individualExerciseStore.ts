@@ -77,7 +77,7 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
           id: e.id,
           name: e.name,
           area: e.area,
-          muscleGroup: e.muscleGroup,
+          muscleGroup: e.muscleGroups[0] ?? e.area,
           isCustom: false,
         }));
         return [...builtIn, ...customDefs];

@@ -12,7 +12,11 @@ import type {
   SsWorkoutTemplateEntry,
 } from '../types';
 import { loadFromStorage, saveToStorage } from '../lib/storage';
-import { BUILT_IN_EXERCISE_DB, ssExSlug } from '../data/supersets';
+import {
+  BUILT_IN_EXERCISE_DB,
+  LEGACY_SS_EXERCISE_ID_MAP,
+  resolveSupersetExerciseId,
+} from '../data/supersets';
 import { recordMasterPerformance, syncMasterExerciseMetadata } from './exerciseMasterStore';
 
 const KEY = 'ww_superset_v3'; // bumped — exerciseDb replaces defStates
@@ -78,28 +82,84 @@ function getExercise(db: Record<string, SsExercise>, id: string): SsExercise {
   return db[id] ?? { id, name: id, muscleGroup: '', weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
 }
 
+function remapSupersetExerciseId(id: string): string {
+  return LEGACY_SS_EXERCISE_ID_MAP[id] ?? id;
+}
+
+function normalizeExercise(ex: Partial<SsExercise> & Pick<SsExercise, 'id' | 'name'>): SsExercise {
+  const muscleGroups = ex.muscleGroups?.length
+    ? ex.muscleGroups
+    : ex.muscleGroup
+      ? [ex.muscleGroup]
+      : [];
+  return {
+    id: ex.id,
+    name: ex.name,
+    muscleGroup: ex.muscleGroup ?? '',
+    area: ex.area,
+    muscleGroups,
+    weightLbs: ex.weightLbs ?? DEFAULT_WEIGHT,
+    lastWeightLbs: ex.lastWeightLbs ?? null,
+    lastOutcome: ex.lastOutcome ?? null,
+    targetReps: ex.targetReps ?? 10,
+  };
+}
+
 export const useSupersetStore = create<SupersetStore>()(
   subscribeWithSelector((set, get) => {
     const loaded = loadFromStorage<Partial<SupersetProgram>>(KEY, {});
 
     // Merge built-in exercise DB with any saved DB (saved takes precedence for weights/outcomes)
-    // Backfill muscleGroup from built-in DB for any saved entries that predate this field
+    // Backfill muscle metadata for any saved entries that predate these fields.
+    // Also migrate any legacy ss-ex-* built-in IDs to canonical exercise IDs.
     const savedDb = (loaded as SupersetProgram).exerciseDb ?? {};
     const mergedDb: Record<string, SsExercise> = { ...BUILT_IN_EXERCISE_DB };
+
+    const migratedSavedDb: Record<string, SsExercise> = {};
     for (const [id, saved] of Object.entries(savedDb)) {
-      mergedDb[id] = {
-        ...(BUILT_IN_EXERCISE_DB[id] ?? {}),
+      const canonicalId = remapSupersetExerciseId(id);
+      const builtIn = BUILT_IN_EXERCISE_DB[canonicalId];
+      const normalized = normalizeExercise({
+        ...builtIn,
         ...saved,
-        muscleGroup: saved.muscleGroup || BUILT_IN_EXERCISE_DB[id]?.muscleGroup || '',
-        targetReps: saved.targetReps ?? BUILT_IN_EXERCISE_DB[id]?.targetReps ?? 10,
-      } as SsExercise;
+        id: canonicalId,
+        name: saved.name || builtIn?.name || canonicalId,
+        muscleGroup: saved.muscleGroup || builtIn?.muscleGroup || '',
+        area: saved.area ?? builtIn?.area,
+        muscleGroups: saved.muscleGroups?.length
+          ? saved.muscleGroups
+          : builtIn?.muscleGroups,
+      });
+
+      migratedSavedDb[canonicalId] = normalizeExercise({
+        ...(migratedSavedDb[canonicalId] ?? {}),
+        ...normalized,
+        id: canonicalId,
+        name: normalized.name,
+      });
     }
+
+    for (const [id, ex] of Object.entries(migratedSavedDb)) {
+      mergedDb[id] = normalizeExercise({
+        ...(BUILT_IN_EXERCISE_DB[id] ?? {}),
+        ...ex,
+        id,
+        name: ex.name,
+      });
+    }
+
+    const remapEntryIds = <T extends { exerciseAId: string; exerciseBId: string }>(entry: T): T => ({
+      ...entry,
+      exerciseAId: remapSupersetExerciseId(entry.exerciseAId),
+      exerciseBId: remapSupersetExerciseId(entry.exerciseBId),
+    });
 
     // Migrate old session format: repsA/repsB → stateA/stateB, backfill targetRepsA/B
     const rawSessions = (loaded as SupersetProgram).sessions ?? [];
     const migratedSessions: SsSession[] = rawSessions.map((session) => ({
       ...session,
-      entries: session.entries.map((entry) => {
+      entries: session.entries.map((rawEntry) => {
+        const entry = remapEntryIds(rawEntry);
         const tA = (entry as any).targetRepsA ?? 10;
         const tB = (entry as any).targetRepsB ?? 10;
         return {
@@ -120,21 +180,29 @@ export const useSupersetStore = create<SupersetStore>()(
       }),
     }));
 
+    const migratedCustomDefs = ((loaded as SupersetProgram).customDefs ?? []).map((def) => remapEntryIds(def));
+    const migratedTemplates = ((loaded as SupersetProgram).workoutTemplates ?? []).map((template) => ({
+      ...template,
+      entries: template.entries.map((entry) => remapEntryIds(entry)),
+    }));
+
     const initial: SupersetProgram = {
       exerciseDb: mergedDb,
-      customDefs: (loaded as SupersetProgram).customDefs ?? [],
+      customDefs: migratedCustomDefs,
       customMuscleGroups: (loaded as SupersetProgram).customMuscleGroups ?? [],
       sessions: migratedSessions,
       activeSessionId: (loaded as SupersetProgram).activeSessionId ?? null,
-      workoutTemplates: (loaded as SupersetProgram).workoutTemplates ?? [],
+      workoutTemplates: migratedTemplates,
     };
+
+    persist(initial);
 
     for (const ex of Object.values(mergedDb)) {
       syncMasterExerciseMetadata({
         id: ex.id,
         name: ex.name,
-        primaryMuscleGroup: ex.muscleGroup,
-        muscleGroups: ex.muscleGroup ? [ex.muscleGroup] : [],
+        primaryMuscleGroup: ex.area || ex.muscleGroup,
+        muscleGroups: ex.muscleGroups?.length ? ex.muscleGroups : ex.muscleGroup ? [ex.muscleGroup] : [],
         source: 'custom',
       });
     }
@@ -330,15 +398,21 @@ export const useSupersetStore = create<SupersetStore>()(
         }),
 
       ensureExercise: (name, muscleGroup = '') => {
-        const id = ssExSlug(name);
+        const id = resolveSupersetExerciseId(name);
         set((s) => {
           if (s.exerciseDb[id]) return s;
-          const newEx: SsExercise = { id, name, muscleGroup, weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
+          const builtIn = BUILT_IN_EXERCISE_DB[id];
+          const newEx: SsExercise = normalizeExercise({
+            ...builtIn,
+            id,
+            name: builtIn?.name ?? name,
+            muscleGroup: muscleGroup || builtIn?.muscleGroup || '',
+          });
           syncMasterExerciseMetadata({
             id,
-            name,
-            primaryMuscleGroup: muscleGroup,
-            muscleGroups: muscleGroup ? [muscleGroup] : [],
+            name: newEx.name,
+            primaryMuscleGroup: newEx.area || newEx.muscleGroup,
+            muscleGroups: newEx.muscleGroups?.length ? newEx.muscleGroups : newEx.muscleGroup ? [newEx.muscleGroup] : [],
             source: 'custom',
           });
           const next: SupersetProgram = { ...s, exerciseDb: { ...s.exerciseDb, [id]: newEx } };
@@ -356,7 +430,12 @@ export const useSupersetStore = create<SupersetStore>()(
           const dbUpdates: Record<string, SsExercise> = {};
           for (const exId of [newDef.exerciseAId, newDef.exerciseBId]) {
             if (!s.exerciseDb[exId]) {
-              dbUpdates[exId] = { id: exId, name: exId, muscleGroup: newDef.muscleGroup ?? '', weightLbs: DEFAULT_WEIGHT, lastWeightLbs: null, lastOutcome: null, targetReps: 10 };
+              dbUpdates[exId] = normalizeExercise({
+                ...(BUILT_IN_EXERCISE_DB[exId] ?? {}),
+                id: exId,
+                name: BUILT_IN_EXERCISE_DB[exId]?.name ?? exId,
+                muscleGroup: BUILT_IN_EXERCISE_DB[exId]?.muscleGroup ?? newDef.muscleGroup ?? '',
+              });
             }
           }
           const next: SupersetProgram = {
@@ -396,15 +475,23 @@ export const useSupersetStore = create<SupersetStore>()(
         }),
 
       addExercise: (name, weightLbs = DEFAULT_WEIGHT, muscleGroup = '', targetReps = 10) => {
-        const id = ssExSlug(name);
+        const id = resolveSupersetExerciseId(name);
         const existing = get().exerciseDb[id];
         if (existing) return existing;
-        const newEx: SsExercise = { id, name, muscleGroup, weightLbs, lastWeightLbs: null, lastOutcome: null, targetReps };
+        const builtIn = BUILT_IN_EXERCISE_DB[id];
+        const newEx: SsExercise = normalizeExercise({
+          ...builtIn,
+          id,
+          name: builtIn?.name ?? name,
+          muscleGroup: muscleGroup || builtIn?.muscleGroup || '',
+          weightLbs,
+          targetReps,
+        });
         syncMasterExerciseMetadata({
           id,
-          name,
-          primaryMuscleGroup: muscleGroup,
-          muscleGroups: muscleGroup ? [muscleGroup] : [],
+          name: newEx.name,
+          primaryMuscleGroup: newEx.area || newEx.muscleGroup,
+          muscleGroups: newEx.muscleGroups?.length ? newEx.muscleGroups : newEx.muscleGroup ? [newEx.muscleGroup] : [],
           source: 'custom',
         });
         set((s) => {

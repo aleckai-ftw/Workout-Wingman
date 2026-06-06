@@ -38,6 +38,7 @@ export interface FoodItem {
   proteinPerServing: number;  // grams
   caloriesPerServing: number; // kcal
   servingSize: string;        // descriptive, e.g. "1 breast (120g)"
+  notes?: string;             // optional assumptions/context for nutrition values
   isCustom: boolean;
 }
 
@@ -101,7 +102,7 @@ export interface FxFExerciseDef {
   name: string;
   area?: string;                // e.g. "Chest" — primary area for display
   muscleGroup?: string;         // e.g. "Pectorals"
-  areas?: string[];             // all areas worked — used for staleness tracking
+  muscleGroups?: string[];      // all worked groups/areas used for tracking
   numSets: number;              // 5 normally; 1 for Deadlift
   weightLbs: number;            // current planned weight for next session
   targetReps: number;           // 5 normally, 7 after failure
@@ -124,7 +125,7 @@ export interface FxFSessionExercise {
   name: string;
   area?: string;        // snapshot at session start
   muscleGroup?: string; // snapshot at session start
-  areas?: string[];     // snapshot at session start — all areas worked
+  muscleGroups?: string[]; // snapshot at session start — all worked groups/areas
   numSets: number;      // snapshot of numSets at session start
   weightLbs: number;    // snapshot at session start (may be bumped via +5)
   targetReps: number;   // snapshot at session start
@@ -165,6 +166,8 @@ export interface SsExercise {
   id: ID;
   name: string;
   muscleGroup: string; // primary muscle group (SsMuscleGroup or custom group id)
+  area?: string;       // canonical primary area when known
+  muscleGroups?: string[]; // all worked groups/areas when known
   weightLbs: number;
   lastWeightLbs: number | null;
   lastOutcome: 'success' | 'failure' | null;

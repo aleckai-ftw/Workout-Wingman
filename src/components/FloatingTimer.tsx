@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCountdownStore } from '../stores/countdownStore';
 import { useTimerStore } from '../stores/timerStore';
@@ -15,6 +16,12 @@ function formatTime(seconds: number) {
 export function FloatingTimer() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [dismissed, setDismissed] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const dragStartX = useRef<number | null>(null);
+  const draggingRef = useRef(false);
 
   const cd = useCountdownStore();
   const rest = useTimerStore();
@@ -35,6 +42,15 @@ export function FloatingTimer() {
   const showCountdown = cdActive;
   const remaining = showCountdown ? cd.remainingSeconds : rest.remainingSeconds;
   const isRunning = showCountdown ? cd.isRunning : rest.isRunning;
+  const runningNow = cd.isRunning || rest.isRunning;
+
+  useEffect(() => {
+    if (location.pathname === '/timer' && runningNow) {
+      setDismissed(false);
+    }
+  }, [location.pathname, runningNow]);
+
+  if (dismissed) return null;
 
   let label: string;
   if (showCountdown) {
@@ -64,13 +80,57 @@ export function FloatingTimer() {
     }
   };
 
+  const SWIPE_DISMISS_PX = 90;
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStartX.current = e.clientX;
+    draggingRef.current = false;
+    setIsDragging(true);
+    setDragX(0);
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (dragStartX.current === null) return;
+    const delta = Math.max(0, e.clientX - dragStartX.current);
+    setDragX(delta);
+    if (delta > 8) draggingRef.current = true;
+  }
+
+  function onPointerEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    if (dragX >= SWIPE_DISMISS_PX) {
+      setDismissed(true);
+    }
+    dragStartX.current = null;
+    draggingRef.current = false;
+    setIsDragging(false);
+    setDragX(0);
+  }
+
+  function onWidgetClick() {
+    if (draggingRef.current) return;
+    navigate('/timer');
+  }
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => navigate('/timer')}
+      onClick={onWidgetClick}
       onKeyDown={(e) => e.key === 'Enter' && navigate('/timer')}
-      className="fixed bottom-[76px] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-white border border-[var(--color-border)] shadow-lg rounded-full px-4 py-2.5 cursor-pointer hover:shadow-xl transition-shadow"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      className="fixed bottom-[76px] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-white border border-[var(--color-border)] shadow-lg rounded-full px-4 py-2.5 cursor-pointer hover:shadow-xl transition-shadow select-none touch-pan-y"
+      style={{
+        transform: `translateX(calc(-50% + ${dragX}px))`,
+        opacity: dragX > 0 ? Math.max(0.45, 1 - dragX / 220) : 1,
+        transition: isDragging ? 'none' : 'transform 180ms ease, opacity 180ms ease',
+      }}
       aria-label="Open timer"
     >
       {/* Play / Pause / Restart */}

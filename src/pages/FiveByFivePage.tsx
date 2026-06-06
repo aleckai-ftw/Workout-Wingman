@@ -405,13 +405,14 @@ function WorkoutPlanCard({
   onToggleEdit: () => void;
   onDelete: (defId: string) => void;
   onWeightChange: (defId: string, w: number) => void;
-  onAddExercise: (name: string, weight: number, numSets: number, area?: string) => void;
+  onAddExercise: (name: string, weight: number, numSets: number, area?: string, muscleGroups?: string[]) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
 }) {
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState('45');
   const [newNumSets, setNewNumSets] = useState(5);
   const [newArea, setNewArea] = useState('');
+  const [newMuscleGroups, setNewMuscleGroups] = useState<string[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -429,22 +430,29 @@ function WorkoutPlanCard({
   }
 
   const PRESET_EXERCISES = [
-    { name: 'Squat',          sets: 5, area: 'Quads' },
-    { name: 'Bench Press',    sets: 5, area: 'Chest' },
-    { name: 'Barbell Row',    sets: 5, area: 'Back' },
-    { name: 'Overhead Press', sets: 5, area: 'Shoulders' },
-    { name: 'Deadlift',       sets: 1, area: 'Lower Back' },
-    { name: 'Pull Up',        sets: 5, area: 'Back' },
-    { name: 'Chin Up',        sets: 5, area: 'Back' },
+    { name: 'Squat',          sets: 5, area: 'Quads',      muscleGroups: ['Quads', 'Glutes', 'Hamstrings', 'Lower Back'] },
+    { name: 'Bench Press',    sets: 5, area: 'Chest',      muscleGroups: ['Chest', 'Triceps', 'Shoulders'] },
+    { name: 'Barbell Row',    sets: 5, area: 'Back',       muscleGroups: ['Back', 'Biceps', 'Lower Back'] },
+    { name: 'Overhead Press', sets: 5, area: 'Shoulders',  muscleGroups: ['Shoulders', 'Triceps'] },
+    { name: 'Deadlift',       sets: 1, area: 'Lower Back', muscleGroups: ['Lower Back', 'Back', 'Hamstrings', 'Glutes', 'Quads'] },
+    { name: 'Pull Up',        sets: 5, area: 'Back',       muscleGroups: ['Back', 'Biceps'] },
+    { name: 'Chin Up',        sets: 5, area: 'Back',       muscleGroups: ['Back', 'Biceps'] },
   ];
 
   function handleAdd() {
     if (!newName.trim()) return;
-    onAddExercise(newName.trim(), parseFloat(newWeight) || 45, newNumSets, newArea || undefined);
+    onAddExercise(
+      newName.trim(),
+      parseFloat(newWeight) || 45,
+      newNumSets,
+      newArea || undefined,
+      newMuscleGroups.length > 0 ? newMuscleGroups : undefined,
+    );
     setNewName('');
     setNewWeight('45');
     setNewNumSets(5);
     setNewArea('');
+    setNewMuscleGroups([]);
   }
 
   const lastDate = lastSession
@@ -523,7 +531,12 @@ function WorkoutPlanCard({
             ).map((p) => (
               <button
                 key={p.name}
-                onClick={() => { setNewName(p.name); setNewNumSets(p.sets); setNewArea(p.area); }}
+                onClick={() => {
+                  setNewName(p.name);
+                  setNewNumSets(p.sets);
+                  setNewArea(p.area);
+                  setNewMuscleGroups(p.muscleGroups);
+                }}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                   newName === p.name
                     ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white'
@@ -736,7 +749,9 @@ export function FiveByFivePage() {
             }
             onDelete={(defId) => removeExerciseFromPlan(workout, defId)}
             onWeightChange={(defId, w) => setPlanExerciseWeight(workout, defId, w)}
-            onAddExercise={(name, weight, numSets, area) => addExerciseToPlan(workout, name, weight, numSets, area)}
+            onAddExercise={(name, weight, numSets, area, muscleGroups) =>
+              addExerciseToPlan(workout, name, weight, numSets, area, area, muscleGroups)
+            }
             onReorder={(from, to) => reorderPlanExercises(workout, from, to)}
           />
         ))}

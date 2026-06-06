@@ -89,12 +89,14 @@ function ServingRow({
   food,
   date: _date,
   onSetServings,
+  onEdit,
   onRemove,
 }: {
   serving: DailyServing;
   food: FoodItem;
   date: string;
   onSetServings: (count: number) => void;
+  onEdit: () => void;
   onRemove: () => void;
 }) {
   const totalG = Math.round(food.proteinPerServing * serving.servings);
@@ -123,6 +125,17 @@ function ServingRow({
       {/* Serving counter */}
       <div className="flex items-center gap-1 shrink-0">
         <button
+          onClick={onEdit}
+          className="w-8 h-8 rounded-full border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+          aria-label="Edit ingredient"
+          title="Edit ingredient"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+        <button
           onClick={() => serving.servings <= 1 ? onRemove() : onSetServings(serving.servings - 1)}
           className="w-8 h-8 rounded-full border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
         >
@@ -144,6 +157,107 @@ function ServingRow({
   );
 }
 
+// ─── Edit Logged Ingredient Sheet ────────────────────────────────────────────
+
+function EditLoggedIngredientSheet({
+  food,
+  onSave,
+  onClose,
+}: {
+  food: FoodItem;
+  onSave: (patch: { proteinPerServing: number; caloriesPerServing: number; servingSize: string }) => void;
+  onClose: () => void;
+}) {
+  const [proteinStr, setProteinStr] = useState(String(food.proteinPerServing));
+  const [caloriesStr, setCaloriesStr] = useState(String(food.caloriesPerServing));
+  const [servingSize, setServingSize] = useState(food.servingSize);
+  const [error, setError] = useState('');
+
+  function handleSave() {
+    const protein = parseFloat(proteinStr);
+    const calories = parseFloat(caloriesStr);
+    if (isNaN(protein) || protein < 0) { setError('Enter a valid protein amount.'); return; }
+    if (isNaN(calories) || calories < 0) { setError('Enter a valid calorie amount.'); return; }
+    if (!servingSize.trim()) { setError('Serving size is required.'); return; }
+    onSave({ proteinPerServing: protein, caloriesPerServing: calories, servingSize: servingSize.trim() });
+  }
+
+  return (
+    <div className="fixed inset-0 z-60 flex flex-col" style={{ maxWidth: 430, margin: '0 auto' }}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl pt-5 px-5 pb-20 space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(100% - 64px)' }}>
+        <div className="flex justify-center">
+          <div className="w-10 h-1 bg-[var(--color-border)] rounded-full" />
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">Edit Ingredient</h2>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">{food.name}{food.isCustom ? '' : ' (built-in)'}</p>
+          {!food.isCustom && (
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">Saving will create a custom copy for this entry.</p>
+          )}
+        </div>
+
+        {error && <p className="text-sm text-[var(--color-danger)] bg-red-50 rounded-xl px-3 py-2">{error}</p>}
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1 block">Serving size</label>
+            <input
+              autoFocus
+              type="text"
+              value={servingSize}
+              onChange={(e) => setServingSize(e.target.value)}
+              placeholder="e.g. 1 cup (240ml)"
+              className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1 block">Protein per serving (g)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={proteinStr}
+                onChange={(e) => setProteinStr(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1 block">Calories per serving (kcal)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={caloriesStr}
+                onChange={(e) => setCaloriesStr(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-xl border border-[var(--color-border)] text-sm font-medium text-[var(--color-text-muted)]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex-1 py-3 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Recommendation card ──────────────────────────────────────────────────────
 
 function RecommendationCard({ food, onAdd }: { food: FoodItem; onAdd: () => void }) {
@@ -153,7 +267,7 @@ function RecommendationCard({ food, onAdd }: { food: FoodItem; onAdd: () => void
       <span className="text-xl">{meta.emoji}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-[var(--color-text)] truncate">{food.name}</p>
-        <p className="text-xs text-[var(--color-text-muted)]">{food.proteinPerServing}g protein · {food.servingSize}</p>
+        <p className="text-xs text-[var(--color-text-muted)]">{food.proteinPerServing}g protein · {food.caloriesPerServing} kcal · {food.servingSize}</p>
       </div>
       <button
         onClick={onAdd}
@@ -606,13 +720,13 @@ function LoggedMealRow({
 function InlineFoodPicker({
   allFoods,
   ingredientMap,
-  onAdd,
+  onAdjust,
   onBack,
   onAddCustom,
 }: {
   allFoods: FoodItem[];
   ingredientMap: Map<string, number>;
-  onAdd: (foodId: string) => void;
+  onAdjust: (foodId: string, delta: number) => void;
   onBack: () => void;
   onAddCustom?: () => void;
 }) {
@@ -699,22 +813,42 @@ function InlineFoodPicker({
                 <p className="text-sm font-semibold text-[var(--color-text)] truncate">{food.name}</p>
                 <p className="text-xs text-[var(--color-text-muted)]">{food.proteinPerServing}g · {food.caloriesPerServing} kcal · {food.servingSize}</p>
               </div>
-              <button
-                onClick={() => onAdd(food.id)}
-                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold transition-colors ${
-                  count > 0
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'border-2 border-[var(--color-primary)] text-[var(--color-primary)]'
-                }`}
-              >
-                {count > 0 ? (
-                  <span className="text-xs">{count}</span>
-                ) : (
+              {count > 0 ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => onAdjust(food.id, -1)}
+                    className="w-7 h-7 rounded-full border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-muted)] hover:border-red-400 hover:text-red-500 transition-colors"
+                    aria-label={`Remove one serving of ${food.name}`}
+                    title="Remove one"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3">
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </button>
+                  <span className="w-5 text-center text-sm font-bold text-[var(--color-text)]">{count}</span>
+                  <button
+                    onClick={() => onAdjust(food.id, 1)}
+                    className="w-7 h-7 rounded-full border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                    aria-label={`Add one serving of ${food.name}`}
+                    title="Add one"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3">
+                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => onAdjust(food.id, 1)}
+                  className="w-8 h-8 rounded-full border-2 border-[var(--color-primary)] text-[var(--color-primary)] flex items-center justify-center shrink-0 font-bold transition-colors"
+                  aria-label={`Add ${food.name}`}
+                  title="Add ingredient"
+                >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
                     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
-                )}
-              </button>
+                </button>
+              )}
             </div>
           );
         })}
@@ -780,11 +914,15 @@ function MealEditorSheet({
   }
 
   function adjustServings(foodId: string, delta: number) {
-    setIngredients((prev) =>
-      prev
+    setIngredients((prev) => {
+      const existing = prev.find((i) => i.foodId === foodId);
+      if (!existing) {
+        return delta > 0 ? [...prev, { foodId, servings: delta }] : prev;
+      }
+      return prev
         .map((i) => i.foodId === foodId ? { ...i, servings: i.servings + delta } : i)
-        .filter((i) => i.servings > 0),
-    );
+        .filter((i) => i.servings > 0);
+    });
   }
 
   return (
@@ -801,7 +939,7 @@ function MealEditorSheet({
           <InlineFoodPicker
             allFoods={allFoods}
             ingredientMap={ingredientMap}
-            onAdd={addIngredient}
+            onAdjust={adjustServings}
             onBack={() => setPickerOpen(false)}
             onAddCustom={() => setCustomOpen(true)}
           />
@@ -938,11 +1076,15 @@ function CreateMealSheet({
   }
 
   function adjustServings(foodId: string, delta: number) {
-    setIngredients((prev) =>
-      prev
+    setIngredients((prev) => {
+      const existing = prev.find((i) => i.foodId === foodId);
+      if (!existing) {
+        return delta > 0 ? [...prev, { foodId, servings: delta }] : prev;
+      }
+      return prev
         .map((i) => i.foodId === foodId ? { ...i, servings: i.servings + delta } : i)
-        .filter((i) => i.servings > 0),
-    );
+        .filter((i) => i.servings > 0);
+    });
   }
 
   function handleSave() {
@@ -964,7 +1106,7 @@ function CreateMealSheet({
           <InlineFoodPicker
             allFoods={allFoods}
             ingredientMap={ingredientMap}
-            onAdd={addIngredient}
+            onAdjust={adjustServings}
             onBack={() => setPickerOpen(false)}
             onAddCustom={() => setCustomOpen(true)}
           />
@@ -1173,7 +1315,88 @@ function BrowseMealsSheet({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getRecommendations(servings: DailyServing[], meals: LoggedMealEntry[], allFoods: FoodItem[]): FoodItem[] {
+function getRecommendations(
+  servings: DailyServing[],
+  meals: LoggedMealEntry[],
+  allFoods: FoodItem[],
+  proteinTotal: number,
+  proteinGoal: number,
+  calorieTotal: number,
+  calorieGoal: number,
+): FoodItem[] {
+  const proteinGap = proteinGoal - proteinTotal;
+  const calorieGap = calorieGoal - calorieTotal;
+  const proteinRemaining = Math.max(0, proteinGap);
+  const calorieRemaining = Math.max(0, calorieGap);
+  const proteinOver = Math.max(0, proteinTotal - proteinGoal);
+  const calorieOver = Math.max(0, calorieTotal - calorieGoal);
+  const proteinOverRatio = proteinOver / Math.max(1, proteinGoal);
+  const calorieOverRatio = calorieOver / Math.max(1, calorieGoal);
+  const MAX_RECOMMENDATIONS = 12;
+
+  function rankByScore(
+    score: (f: FoodItem) => number,
+    filter?: (f: FoodItem) => boolean,
+  ): FoodItem[] {
+    const scored = allFoods
+      .filter((f) => (filter ? filter(f) : true))
+      .map((f) => ({ f, score: score(f) }))
+      .sort((a, b) => a.score - b.score)
+      .map((x) => x.f);
+    if (scored.length >= MAX_RECOMMENDATIONS) return scored.slice(0, MAX_RECOMMENDATIONS);
+    return [...new Set([...scored, ...allFoods])].slice(0, MAX_RECOMMENDATIONS);
+  }
+
+  // Need protein, but calories are already at/over goal: minimize calorie cost and protein overshoot.
+  if (proteinRemaining > 0 && calorieGap <= 0) {
+    const proteinOvershootCap = proteinRemaining + Math.max(4, proteinRemaining * 0.75);
+    const caloriePenalty = 0.25 + calorieOverRatio * 7;
+    return rankByScore(
+      (f) => {
+        const p = f.proteinPerServing;
+        const c = f.caloriesPerServing;
+        const proteinUnder = Math.max(0, proteinRemaining - p);
+        const proteinOver = Math.max(0, p - proteinRemaining);
+        return proteinUnder * 3 + proteinOver * 8 + c * caloriePenalty;
+      },
+      (f) => f.proteinPerServing > 0 && f.proteinPerServing <= proteinOvershootCap,
+    );
+  }
+
+  // Need calories, but protein is already at/over goal: minimize extra protein and calorie overshoot.
+  if (calorieRemaining > 0 && proteinGap <= 0) {
+    const calorieOvershootCap = calorieRemaining + Math.max(120, calorieRemaining * 0.5);
+    const proteinPenalty = 6 + proteinOverRatio * 35;
+    return rankByScore(
+      (f) => {
+        const p = f.proteinPerServing;
+        const c = f.caloriesPerServing;
+        const calorieUnder = Math.max(0, calorieRemaining - c);
+        const calorieOver = Math.max(0, c - calorieRemaining);
+        return calorieUnder * 0.8 + calorieOver * 2.2 + p * proteinPenalty;
+      },
+      (f) => f.caloriesPerServing <= calorieOvershootCap,
+    );
+  }
+
+  // Need both: fit both remaining targets and penalize overshooting either one.
+  if (proteinRemaining > 0 && calorieRemaining > 0) {
+    const proteinOvershootCap = proteinRemaining + Math.max(6, proteinRemaining * 0.75);
+    const calorieOvershootCap = calorieRemaining + Math.max(120, calorieRemaining * 0.4);
+    return rankByScore(
+      (f) => {
+        const p = f.proteinPerServing;
+        const c = f.caloriesPerServing;
+        const proteinUnder = Math.max(0, proteinRemaining - p);
+        const proteinOver = Math.max(0, p - proteinRemaining);
+        const calorieUnder = Math.max(0, calorieRemaining - c);
+        const calorieOver = Math.max(0, c - calorieRemaining);
+        return proteinUnder * 2 + proteinOver * 4 + calorieUnder * 0.5 + calorieOver * 1.8;
+      },
+      (f) => f.proteinPerServing <= proteinOvershootCap && f.caloriesPerServing <= calorieOvershootCap,
+    );
+  }
+
   const covered = new Set<FoodCategory>();
   servings.forEach((s) => {
     const food = allFoods.find((f) => f.id === s.foodId);
@@ -1189,15 +1412,32 @@ function getRecommendations(servings: DailyServing[], meals: LoggedMealEntry[], 
   const results: FoodItem[] = [];
   for (const cat of RECOMMENDATION_PRIORITY) {
     if (!covered.has(cat)) {
-      // Highest-protein built-in food from this category
+      // Highest-protein food from this category (built-in or custom)
       const best = allFoods
-        .filter((f) => f.category === cat && !f.isCustom)
+        .filter((f) => f.category === cat)
         .sort((a, b) => b.proteinPerServing - a.proteinPerServing)[0];
       if (best) results.push(best);
     }
-    if (results.length >= 3) break;
+    if (results.length >= MAX_RECOMMENDATIONS) break;
   }
   return results;
+}
+
+function selectShuffledRecommendations(pool: FoodItem[], seed: number, take = 3): FoodItem[] {
+  if (pool.length <= take) return pool;
+
+  const scoreFor = (id: string) => {
+    let hash = (2166136261 ^ seed) >>> 0;
+    for (let i = 0; i < id.length; i += 1) {
+      hash ^= id.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash;
+  };
+
+  return [...pool]
+    .sort((a, b) => scoreFor(a.id) - scoreFor(b.id))
+    .slice(0, take);
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -1211,6 +1451,8 @@ export function DietPage() {
   const [goalDraft, setGoalDraft] = useState('');
   const [editingCalorieGoal, setEditingCalorieGoal] = useState(false);
   const [calorieGoalDraft, setCalorieGoalDraft] = useState('');
+  const [editingIngredient, setEditingIngredient] = useState<{ servingId: string; food: FoodItem } | null>(null);
+  const [recommendationSeed, setRecommendationSeed] = useState(0);
 
   // Meal state
   const [mealEditorData, setMealEditorData] = useState<{
@@ -1223,9 +1465,11 @@ export function DietPage() {
 
   // Stores
   const customFoods = useFoodStore((s) => s.customFoods);
+  const addCustomFood = useFoodStore((s) => s.addCustomFood);
+  const updateCustomFood = useFoodStore((s) => s.updateCustomFood);
   const allFoods = useMemo(() => getAllFoods(customFoods), [customFoods]);
 
-  const { days, addServing, setServings, removeServing, setGoal, setCalorieGoal, logMeal, updateLoggedMeal, removeLoggedMeal } = useProteinStore();
+  const { days, addServing, setServings, replaceServingFood, removeServing, setGoal, setCalorieGoal, logMeal, updateLoggedMeal, removeLoggedMeal } = useProteinStore();
   const { settings, updateSettings } = useProfileStore();
   const { meals: savedMeals, addMeal, updateMeal, deleteMeal } = useMealStore();
 
@@ -1266,9 +1510,14 @@ export function DietPage() {
     });
   }, [todayServings, todayMeals]);
 
+  const recommendationPool = useMemo(
+    () => getRecommendations(todayServings, todayMeals, allFoods, total, goalG, totalCalories, caloriesGoal),
+    [todayServings, todayMeals, allFoods, total, goalG, totalCalories, caloriesGoal],
+  );
+
   const recommendations = useMemo(
-    () => getRecommendations(todayServings, todayMeals, allFoods),
-    [todayServings, todayMeals, allFoods],
+    () => selectShuffledRecommendations(recommendationPool, recommendationSeed, 3),
+    [recommendationPool, recommendationSeed],
   );
 
   function handleAddFood(food: FoodItem) {
@@ -1317,6 +1566,22 @@ export function DietPage() {
   function handleCalorieGoalKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') commitCalorieGoalEdit();
     if (e.key === 'Escape') setEditingCalorieGoal(false);
+  }
+
+  function handleSaveIngredientPatch(servingId: string, food: FoodItem, patch: { proteinPerServing: number; caloriesPerServing: number; servingSize: string }) {
+    if (food.isCustom) {
+      updateCustomFood(food.id, patch);
+      return;
+    }
+
+    const customCopy = addCustomFood({
+      name: food.name,
+      category: food.category,
+      proteinPerServing: patch.proteinPerServing,
+      caloriesPerServing: patch.caloriesPerServing,
+      servingSize: patch.servingSize,
+    });
+    replaceServingFood(today, servingId, customCopy.id);
   }
 
   return (
@@ -1531,6 +1796,7 @@ export function DietPage() {
                         food={food}
                         date={today}
                         onSetServings={(count) => setServings(today, entry.sv.id, count)}
+                        onEdit={() => setEditingIngredient({ servingId: entry.sv.id, food })}
                         onRemove={() => removeServing(today, entry.sv.id)}
                       />
                     );
@@ -1651,11 +1917,21 @@ export function DietPage() {
           {/* Recommendations */}
           {recommendations.length > 0 && (
             <section>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-sm font-semibold text-[var(--color-text)]">Suggested to Balance</h2>
-                <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-0.5 rounded-full">
-                  Not yet logged
-                </span>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-[var(--color-text)]">Suggested to Balance</h2>
+                  <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-0.5 rounded-full">
+                    Not yet logged
+                  </span>
+                </div>
+                {recommendationPool.length > 3 && (
+                  <button
+                    onClick={() => setRecommendationSeed((s) => s + 1)}
+                    className="text-xs font-semibold text-[var(--color-primary)] border border-[var(--color-primary)]/40 px-2.5 py-1.5 rounded-lg hover:bg-[var(--color-primary)]/10"
+                  >
+                    Reshuffle
+                  </button>
+                )}
               </div>
               <div className="space-y-2">
                 {recommendations.map((food) => (
@@ -1779,6 +2055,16 @@ export function DietPage() {
           }}
           onDelete={createMealData.meal ? () => { deleteMeal(createMealData.meal!.id); setCreateMealData(null); } : undefined}
           onClose={() => setCreateMealData(null)}
+        />
+      )}
+      {editingIngredient && (
+        <EditLoggedIngredientSheet
+          food={editingIngredient.food}
+          onSave={(patch) => {
+            handleSaveIngredientPatch(editingIngredient.servingId, editingIngredient.food, patch);
+            setEditingIngredient(null);
+          }}
+          onClose={() => setEditingIngredient(null)}
         />
       )}
     </div>

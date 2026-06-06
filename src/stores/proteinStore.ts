@@ -51,6 +51,8 @@ interface ProteinStore {
   addServing: (foodId: string, defaultGoalG?: number, defaultCalorieGoal?: number) => void;
   /** Set exact serving count. Pass 0 to remove. */
   setServings: (date: string, servingId: string, count: number) => void;
+  /** Replace the food on an existing serving row. If target food exists, merges counts. */
+  replaceServingFood: (date: string, servingId: string, foodId: string) => void;
   removeServing: (date: string, servingId: string) => void;
   setGoal: (date: string, goalG: number) => void;
   setCalorieGoal: (date: string, caloriesGoal: number) => void;
@@ -117,6 +119,36 @@ export const useProteinStore = create<ProteinStore>()(
           count <= 0
             ? day.servings.filter((sv) => sv.id !== servingId)
             : day.servings.map((sv) => (sv.id === servingId ? { ...sv, servings: count } : sv));
+
+        const next = { ...s.days, [date]: { ...day, servings: updatedServings } };
+        persist(next);
+        return { days: next };
+      }),
+
+    replaceServingFood: (date, servingId, foodId) =>
+      set((s) => {
+        const day = s.days[date];
+        if (!day) return {};
+
+        const current = day.servings.find((sv) => sv.id === servingId);
+        if (!current) return {};
+        if (current.foodId === foodId) return {};
+
+        const existingTarget = day.servings.find((sv) => sv.foodId === foodId && sv.id !== servingId);
+
+        const updatedServings = existingTarget
+          ? day.servings
+              .filter((sv) => sv.id !== servingId)
+              .map((sv) =>
+                sv.id === existingTarget.id
+                  ? { ...sv, servings: sv.servings + current.servings }
+                  : sv,
+              )
+          : day.servings.map((sv) =>
+              sv.id === servingId
+                ? { ...sv, foodId }
+                : sv,
+            );
 
         const next = { ...s.days, [date]: { ...day, servings: updatedServings } };
         persist(next);

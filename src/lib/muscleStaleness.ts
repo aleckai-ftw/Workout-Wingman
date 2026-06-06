@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { useIndivExerciseStore } from '../stores/individualExerciseStore';
+import { useIndivExerciseStore, todayDateKey } from '../stores/individualExerciseStore';
 import { useFiveByFiveStore, DEFAULT_EXERCISE_DB as FXF_DEFAULT_DB } from '../stores/fiveByFiveStore';
 import { useSupersetStore } from '../stores/supersetStore';
+import { useExerciseMasterStore } from '../stores/exerciseMasterStore';
 import { BUILT_IN_EXERCISES, BUILT_IN_EXERCISE_BY_ID, BUILT_IN_EXERCISE_BY_NAME, ALL_EXERCISE_AREAS } from '../data/exercises';
 import { BUILT_IN_SS_DEFS } from '../data/supersets';
 import type { ExerciseArea } from '../data/exercises';
@@ -50,8 +51,16 @@ export interface StaleArea {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+function toLocalDateKey(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return value.slice(0, 10);
 }
 
 function daysBetween(a: string, b: string): number {
@@ -130,8 +139,8 @@ function normalizeMuscleGroupKey(muscleGroup: string): string {
 const AREA_TO_MUSCLE_INDICATORS: Record<ExerciseArea, string[]> = Object.fromEntries(
   ALL_EXERCISE_AREAS.map((area) => {
     const indicators = BUILT_IN_EXERCISES
-      .filter((e) => e.areas.includes(area))
-      .map((e) => normalizeMuscleGroupKey(e.muscleGroup))
+      .filter((e) => e.muscleGroups.includes(area))
+      .flatMap((e) => e.muscleGroups.map((g) => normalizeMuscleGroupKey(g)))
       .filter((v) => v.length > 0);
 
     // Include superset muscle-group bucket keys so superset-only records
@@ -150,7 +159,7 @@ function areasForExerciseName(name: string, fallbackAreas: ExerciseArea[]): Exer
   const normalized = normalizeLookupName(name);
   const singular = singularizePhrase(normalized);
   const match = direct ?? BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[normalized] ?? BUILT_IN_EXERCISE_BY_NORMALIZED_NAME[singular];
-  return match ? (match.areas as ExerciseArea[]) : fallbackAreas;
+  return match ? (match.muscleGroups as ExerciseArea[]) : fallbackAreas;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -165,6 +174,7 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
   const indivEntries = useIndivExerciseStore((s) => s.entries);
   const fxfSessions  = useFiveByFiveStore((s) => s.sessions);
   const ssSessions   = useSupersetStore((s) => s.sessions);
+  const masterExercises = useExerciseMasterStore((s) => s.exercises);
 
   return useMemo(() => {
     // Don't warn if the user has never logged anything
@@ -180,7 +190,7 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
 
     function updateMap(map: Map<string, string>, key: string, date: string) {
       if (!key) return;
-      const d = date.slice(0, 10);
+      const d = toLocalDateKey(date);
       const prev = map.get(key);
       if (!prev || d > prev) map.set(key, d);
     }
@@ -196,12 +206,38 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
       updateMap(lastWorkedByMuscleIndicator, key, date);
     }
 
+    function updateMuscleIndicators(muscleGroups: readonly string[] | undefined, date: string) {
+      if (!muscleGroups?.length) return;
+      for (const group of muscleGroups) updateMuscleIndicator(group, date);
+    }
+
+    function isExerciseArea(value: string): value is ExerciseArea {
+      return (ALL_EXERCISE_AREAS as readonly string[]).includes(value);
+    }
+
+    function updateFromMasterExercise(exerciseId: string | undefined, date: string) {
+      if (!exerciseId) return;
+      const master = masterExercises[exerciseId];
+      if (!master) return;
+
+      for (const mg of master.muscleGroups) updateMuscleIndicator(mg, date);
+
+      const areas = master.areas.filter(isExerciseArea);
+      if (areas.length > 0) {
+        updateAreasFallback(areas, date);
+      } else if (master.primaryArea && isExerciseArea(master.primaryArea)) {
+        updateAreasFallback([master.primaryArea], date);
+      }
+    }
+
     // 1. Individual entries — use muscleGroup first, area fallback second
     for (const entry of indivEntries) {
+      updateFromMasterExercise(entry.defId, entry.date);
+
       const builtIn = entry.defId ? BUILT_IN_EXERCISE_BY_ID[entry.defId] : null;
       if (builtIn) {
-        updateMuscleIndicator(builtIn.muscleGroup, entry.date);
-        updateAreasFallback(builtIn.areas as ExerciseArea[], entry.date);
+        updateMuscleIndicators(builtIn.muscleGroups, entry.date);
+        updateAreasFallback(builtIn.muscleGroups as ExerciseArea[], entry.date);
       } else {
         updateMuscleIndicator(entry.muscleGroup, entry.date);
         if (entry.area) updateMap(fallbackLastWorkedByArea, entry.area, entry.date);
@@ -211,16 +247,23 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
     // 2. Completed 5x5 sessions — muscleGroup first, then area fallback
     for (const session of fxfSessions) {
       if (!session.completed) continue;
-      const date = session.date.slice(0, 10);
+      const date = toLocalDateKey(session.date);
       for (const ex of session.exercises) {
+        updateFromMasterExercise(ex.defId, date);
+
         const fallbackDef = FXF_DEFAULT_DB[ex.defId];
         updateMuscleIndicator(ex.muscleGroup ?? fallbackDef?.muscleGroup, date);
 
-        const areas =
-          (ex.areas as ExerciseArea[] | undefined) ??
-          (fallbackDef?.areas as ExerciseArea[] | undefined);
-        if (areas?.length) {
-          updateAreasFallback(areas, date);
+        updateMuscleIndicators(ex.muscleGroups, date);
+        if (!ex.muscleGroups?.length) {
+          updateMuscleIndicators(fallbackDef?.muscleGroups, date);
+        }
+
+        const muscleGroups =
+          (ex.muscleGroups as ExerciseArea[] | undefined) ??
+          (fallbackDef?.muscleGroups as ExerciseArea[] | undefined);
+        if (muscleGroups?.length) {
+          updateAreasFallback(muscleGroups, date);
         } else {
           const fallbackArea = ex.area ?? fallbackDef?.area;
           if (fallbackArea) updateMap(fallbackLastWorkedByArea, fallbackArea, date);
@@ -231,8 +274,11 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
     // 3. Completed superset sessions — per-exercise muscleGroup first, then area fallback
     for (const session of ssSessions) {
       if (!session.completed) continue;
-      const date = session.date.slice(0, 10);
+      const date = toLocalDateKey(session.date);
       for (const entry of session.entries) {
+        updateFromMasterExercise(entry.exerciseAId, date);
+        updateFromMasterExercise(entry.exerciseBId, date);
+
         const fallback = SS_MG_FALLBACK_AREAS[entry.muscleGroup] ?? [];
 
         const aBuiltIn = (() => {
@@ -254,15 +300,23 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
           );
         })();
 
-        updateMuscleIndicator(aBuiltIn?.muscleGroup ?? entry.muscleGroup, date);
-        updateMuscleIndicator(bBuiltIn?.muscleGroup ?? entry.muscleGroup, date);
+        if (aBuiltIn?.muscleGroups?.length) {
+          updateMuscleIndicators(aBuiltIn.muscleGroups, date);
+        } else {
+          updateMuscleIndicator(entry.muscleGroup, date);
+        }
+        if (bBuiltIn?.muscleGroups?.length) {
+          updateMuscleIndicators(bBuiltIn.muscleGroups, date);
+        } else {
+          updateMuscleIndicator(entry.muscleGroup, date);
+        }
 
         updateAreasFallback(areasForExerciseName(entry.exerciseAName, fallback), date);
         updateAreasFallback(areasForExerciseName(entry.exerciseBName, fallback), date);
       }
     }
 
-    const today = todayKey();
+    const today = todayDateKey();
     const stale: StaleArea[] = [];
 
     for (const area of ALL_EXERCISE_AREAS) {
@@ -295,5 +349,5 @@ export function useMuscleStaleness(thresholdDays = 5): StaleArea[] {
     stale.sort((a, b) => b.daysAgo - a.daysAgo);
 
     return stale;
-  }, [indivEntries, fxfSessions, ssSessions, thresholdDays]);
+  }, [indivEntries, fxfSessions, ssSessions, masterExercises, thresholdDays]);
 }
