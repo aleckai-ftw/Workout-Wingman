@@ -26,9 +26,6 @@ export function FloatingTimer() {
   const cd = useCountdownStore();
   const rest = useTimerStore();
 
-  // Hide entirely when on the timer page
-  if (location.pathname === '/timer') return null;
-
   // Determine which timer to show — prefer countdown if active, then rest
   const cdActive = cd.isRunning || (cd.phase !== 'idle' && cd.remainingSeconds > 0);
   // "between sets": set just finished but more sets remain — keep widget alive
@@ -37,20 +34,23 @@ export function FloatingTimer() {
   const restAllDone = !rest.isRunning && rest.remainingSeconds === 0 && rest.currentSet >= rest.totalSets && rest.durationSeconds > 0;
   const restActive = rest.isRunning || rest.readyToStart || restBetweenSets || restAllDone || (rest.remainingSeconds > 0 && rest.remainingSeconds < rest.durationSeconds);
 
-  if (!cdActive && !restActive) return null;
-
-  const showCountdown = cdActive;
-  const remaining = showCountdown ? cd.remainingSeconds : rest.remainingSeconds;
-  const isRunning = showCountdown ? cd.isRunning : rest.isRunning;
   const runningNow = cd.isRunning || rest.isRunning;
 
+  // Reset dismissed state when navigating back from timer page while running
   useEffect(() => {
     if (location.pathname === '/timer' && runningNow) {
       setDismissed(false);
     }
   }, [location.pathname, runningNow]);
 
+  // All early returns AFTER hooks
+  if (location.pathname === '/timer') return null;
+  if (!cdActive && !restActive) return null;
   if (dismissed) return null;
+
+  const showCountdown = cdActive;
+  const remaining = showCountdown ? cd.remainingSeconds : rest.remainingSeconds;
+  const isRunning = showCountdown ? cd.isRunning : rest.isRunning;
 
   let label: string;
   if (showCountdown) {
@@ -125,7 +125,7 @@ export function FloatingTimer() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
-      className="fixed bottom-[76px] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 bg-white border border-[var(--color-border)] shadow-lg rounded-full px-4 py-2.5 cursor-pointer hover:shadow-xl transition-shadow select-none touch-pan-y"
+      className="fixed bottom-[76px] left-1/2 z-[60] flex items-center gap-3 bg-white border border-[var(--color-border)] shadow-lg rounded-full px-4 py-2.5 cursor-pointer hover:shadow-xl transition-shadow select-none touch-pan-y"
       style={{
         transform: `translateX(calc(-50% + ${dragX}px))`,
         opacity: dragX > 0 ? Math.max(0.45, 1 - dragX / 220) : 1,
