@@ -18,28 +18,28 @@ export function todayDateKey(): string {
 export function computeDayTotal(servings: DailyServing[], allFoods: FoodItem[]): number {
   return servings.reduce((sum, s) => {
     const food = allFoods.find((f) => f.id === s.foodId);
-    return sum + (food ? food.proteinPerServing * s.servings : 0);
+    return sum + (food ? (food.proteinPerServing ?? 0) * (s.servings || 0) : 0);
   }, 0);
 }
 
 export function computeDayCalories(servings: DailyServing[], allFoods: FoodItem[]): number {
   return servings.reduce((sum, s) => {
     const food = allFoods.find((f) => f.id === s.foodId);
-    return sum + (food ? food.caloriesPerServing * s.servings : 0);
+    return sum + (food ? (food.caloriesPerServing ?? 0) * (s.servings || 0) : 0);
   }, 0);
 }
 
 export function computeMealProtein(meal: { ingredients: MealIngredient[] }, allFoods: FoodItem[]): number {
   return meal.ingredients.reduce((sum, ing) => {
     const food = allFoods.find((f) => f.id === ing.foodId);
-    return sum + (food ? food.proteinPerServing * ing.servings : 0);
+    return sum + (food ? (food.proteinPerServing ?? 0) * (ing.servings || 0) : 0);
   }, 0);
 }
 
 export function computeMealCalories(meal: { ingredients: MealIngredient[] }, allFoods: FoodItem[]): number {
   return meal.ingredients.reduce((sum, ing) => {
     const food = allFoods.find((f) => f.id === ing.foodId);
-    return sum + (food ? food.caloriesPerServing * ing.servings : 0);
+    return sum + (food ? (food.caloriesPerServing ?? 0) * (ing.servings || 0) : 0);
   }, 0);
 }
 
