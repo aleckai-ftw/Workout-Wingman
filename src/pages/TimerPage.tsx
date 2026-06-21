@@ -168,6 +168,8 @@ function RestTab() {
   const timer = useTimerStore();
   const defaultRest = useProfileStore((s) => s.settings.defaultRestSeconds);
   const [customRestInput, setCustomRestInput] = useState(String(timer.baseRestSeconds));
+  const [incrementDraft, setIncrementDraft] = useState(String(timer.incrementSeconds));
+  const [totalSetsDraft, setTotalSetsDraft] = useState(String(timer.totalSets));
 
   const isDone = timer.remainingSeconds === 0 && timer.durationSeconds > 0;
   const allSetsDone = isDone && timer.currentSet >= timer.totalSets;
@@ -256,6 +258,8 @@ function RestTab() {
                 timer.setIncrement(15);
                 timer.setTotalSets(5);
                 setCustomRestInput('75');
+                setIncrementDraft('15');
+                setTotalSetsDraft('5');
               }}
               className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
             >
@@ -267,6 +271,8 @@ function RestTab() {
                 timer.setIncrement(15);
                 timer.setTotalSets(3);
                 setCustomRestInput('60');
+                setIncrementDraft('15');
+                setTotalSetsDraft('3');
               }}
               className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
             >
@@ -312,12 +318,14 @@ function RestTab() {
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              value={timer.incrementSeconds}
-              onChange={(e) => {
-                const v = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10);
-                if (!isNaN(v) && v >= 0) timer.setIncrement(v);
-              }}
+              value={incrementDraft}
+              onChange={(e) => setIncrementDraft(e.target.value.replace(/[^0-9]/g, ''))}
               onFocus={(e) => e.target.select()}
+              onBlur={() => {
+                const v = parseInt(incrementDraft, 10);
+                if (!isNaN(v) && v >= 0) timer.setIncrement(v);
+                else setIncrementDraft(String(timer.incrementSeconds));
+              }}
               onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
               className="w-full px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
@@ -328,12 +336,14 @@ function RestTab() {
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              value={timer.totalSets}
-              onChange={(e) => {
-                const v = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10);
-                if (!isNaN(v) && v >= 1) timer.setTotalSets(v);
-              }}
+              value={totalSetsDraft}
+              onChange={(e) => setTotalSetsDraft(e.target.value.replace(/[^0-9]/g, ''))}
               onFocus={(e) => e.target.select()}
+              onBlur={() => {
+                const v = parseInt(totalSetsDraft, 10);
+                if (!isNaN(v) && v >= 1) timer.setTotalSets(v);
+                else setTotalSetsDraft(String(timer.totalSets));
+              }}
               onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
               className="w-full px-3 py-2 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />

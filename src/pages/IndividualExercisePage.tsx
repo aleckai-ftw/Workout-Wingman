@@ -665,12 +665,9 @@ function ExercisePickerSheet({
   );
 }
 
-// ─── Edit entry sheet ─────────────────────────────────────────────────────────
-// Pre-populated version of SetLoggerSheet for editing an existing entry.
-
-// ─── Entry card (inline expandable editor) ───────────────────────────────────
-// Collapsed: shows set summary pills. Tapping opens inline editing within the
-// card — similar to the 5x5 SessionExCard pattern.
+// ─── Entry card ──────────────────────────────────────────────────────────────
+// Collapsed: always shows interactive set rows (pass/fail, add, remove).
+// Expanded (edit mode): shows full reps/weight editors.
 
 function EntryCard({
   entry,
@@ -684,8 +681,54 @@ function EntryCard({
   onDelete: () => void;
 }) {
   const meta = AREA_META[entry.area as keyof typeof AREA_META];
-  const [isExpanded, setIsExpanded] = useState(false);
+  const timer = useTimerStore();
+  const [isEditing, setIsEditing] = useState(false);
   const [editSets, setEditSets] = useState<SetRowData[]>([]);
+
+  function fireTimer() {
+    const isBetween = !timer.isRunning && timer.remainingSeconds === 0 && timer.currentSet < timer.totalSets;
+    if (timer.isRunning) {
+      // already running — leave it
+    } else if (isBetween) {
+      timer.startNextSet();
+    } else {
+      timer.start(timer.baseRestSeconds, 'Exercise Rest', true);
+    }
+  }
+
+  // ── Inline actions (save immediately without opening editor) ──
+
+  function toggleOutcome(setIdx: number, outcome: 'success' | 'failure') {
+    const wasNull = entry.sets[setIdx].outcome === null;
+    const next = entry.sets[setIdx].outcome === outcome ? null : outcome;
+    onSave(
+      entry.sets.map((s, i) =>
+        i === setIdx
+          ? { reps: s.reps, weightLbs: s.weightLbs, outcome: next }
+          : { reps: s.reps, weightLbs: s.weightLbs, outcome: s.outcome ?? null },
+      ),
+    );
+    if (wasNull && next !== null) fireTimer();
+  }
+
+  function removeSetInline(setIdx: number) {
+    if (entry.sets.length <= 1) return;
+    onSave(
+      entry.sets
+        .filter((_, i) => i !== setIdx)
+        .map((s) => ({ reps: s.reps, weightLbs: s.weightLbs, outcome: s.outcome ?? null })),
+    );
+  }
+
+  function addSetInline() {
+    const last = entry.sets[entry.sets.length - 1];
+    onSave([
+      ...entry.sets.map((s) => ({ reps: s.reps, weightLbs: s.weightLbs, outcome: s.outcome ?? null })),
+      { reps: last.reps, weightLbs: last.weightLbs, outcome: null },
+    ]);
+  }
+
+  // ── Full editor ──
 
   function openEdit() {
     setEditSets(
@@ -695,48 +738,42 @@ function EntryCard({
         outcome: s.outcome ?? null,
       })),
     );
-    setIsExpanded(true);
+    setIsEditing(true);
   }
 
-  function cancel() {
-    setIsExpanded(false);
-  }
-
-  function handleChange(i: number, patch: Partial<SetRowData>) {
+  function handleEditChange(i: number, patch: Partial<SetRowData>) {
     setEditSets((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   }
 
-  function addSet() {
+  function addEditSet() {
     const last = editSets[editSets.length - 1];
     setEditSets((prev) => [...prev, { ...last, outcome: null }]);
   }
 
-  function removeSet(i: number) {
+  function removeEditSet(i: number) {
     if (editSets.length <= 1) return;
     setEditSets((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  function save() {
-    const validSets = editSets.filter((s) => s.reps > 0);
-    if (validSets.length === 0) return;
+  function saveEdit() {
+    const valid = editSets.filter((s) => s.reps > 0);
+    if (valid.length === 0) return;
     onSave(
-      validSets.map((s) => ({
+      valid.map((s) => ({
         reps: s.reps,
         weightLbs: unit === 'kg' ? kgToLbs(s.weightDisplay) : s.weightDisplay,
         outcome: s.outcome ?? null,
       })),
     );
-    setIsExpanded(false);
+    setIsEditing(false);
   }
 
-  const canSave = editSets.some((s) => s.reps > 0);
-
-  const allSucceeded = !isExpanded && entry.sets.length > 0 && entry.sets.every((s) => s.outcome === 'success');
-  const anyFailed = !isExpanded && entry.sets.some((s) => s.outcome === 'failure');
+  const allSucceeded = entry.sets.length > 0 && entry.sets.every((s) => s.outcome === 'success');
+  const anyFailed = entry.sets.some((s) => s.outcome === 'failure');
 
   return (
     <div className={`bg-white rounded-2xl border-2 overflow-hidden transition-colors ${
-      isExpanded
+      isEditing
         ? 'border-[var(--color-primary)]/40'
         : allSucceeded
         ? 'border-green-400'
@@ -745,71 +782,133 @@ function EntryCard({
         : 'border-[var(--color-border)]'
     }`}>
 
-      {/* ── Collapsed header (always visible) ── */}
-      <button
-        onClick={isExpanded ? cancel : openEdit}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
-      >
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 ${meta?.bgClass ?? 'bg-gray-50'}`}>
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0 ${meta?.bgClass ?? 'bg-gray-50'}`}>
           {meta?.emoji ?? '💪'}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-[var(--color-text)]">{entry.name}</p>
-          <p className="text-xs text-[var(--color-text-muted)]">{entry.area} · {entry.muscleGroup}</p>
-          {!isExpanded && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {entry.sets.map((s) => (
-                <span
-                  key={s.id}
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                    s.outcome === 'success'
-                      ? 'bg-green-100 text-green-700'
-                      : s.outcome === 'failure'
-                      ? 'bg-red-100 text-red-600'
-                      : 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'
-                  }`}
-                >
-                  {s.reps}×{displayWeight(s.weightLbs, unit)}
-                </span>
-              ))}
-            </div>
-          )}
+          <p className="text-sm font-semibold text-[var(--color-text)] truncate">{entry.name}</p>
+          <p className="text-[11px] text-[var(--color-text-muted)]">{entry.area} · {entry.muscleGroup}</p>
         </div>
-        {/* Chevron rotates when expanded */}
-        <svg
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
-          className={`w-4 h-4 text-[var(--color-text-muted)] shrink-0 transition-transform duration-200 ${
-            isExpanded ? 'rotate-180' : ''
+        {/* Edit / Done toggle */}
+        <button
+          onClick={isEditing ? () => setIsEditing(false) : openEdit}
+          className={`shrink-0 flex items-center gap-1 text-xs font-semibold border-2 rounded-full px-2.5 py-1 transition-colors ${
+            isEditing
+              ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+              : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
           }`}
         >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
+          {isEditing ? 'Cancel' : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+          )}
+        </button>
+      </div>
 
-      {/* ── Expanded editor ── */}
-      {isExpanded && (
+      {/* ── Inline set rows (default view) ── */}
+      {!isEditing && (
+        <>
+          <div className="px-4 pb-2 space-y-1.5">
+            {entry.sets.map((s, i) => (
+              <div key={s.id} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${
+                s.outcome === 'success' ? 'bg-green-50' : s.outcome === 'failure' ? 'bg-red-50' : 'bg-[var(--color-surface)]'
+              }`}>
+                <span className="text-[11px] font-bold text-[var(--color-text-muted)] w-8 shrink-0 select-none">
+                  S{i + 1}
+                </span>
+                <span className="flex-1 text-sm font-semibold text-[var(--color-text)]">
+                  {s.reps}<span className="text-[var(--color-text-muted)] font-normal">×</span>{displayWeight(s.weightLbs, unit)}
+                </span>
+                {/* Pass */}
+                <button
+                  onClick={() => toggleOutcome(i, 'success')}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors ${
+                    s.outcome === 'success'
+                      ? 'border-green-500 bg-green-500 text-white'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] bg-white'
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="w-3.5 h-3.5">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </button>
+                {/* Fail */}
+                <button
+                  onClick={() => toggleOutcome(i, 'failure')}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors ${
+                    s.outcome === 'failure'
+                      ? 'border-red-500 bg-red-500 text-white'
+                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] bg-white'
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="w-3.5 h-3.5">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+                {/* Remove set */}
+                <button
+                  onClick={() => removeSetInline(i)}
+                  disabled={entry.sets.length <= 1}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--color-text-muted)] disabled:opacity-20 active:text-[var(--color-danger)] transition-colors"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer: add set + delete */}
+          <div className="flex items-center gap-2 px-4 pb-3">
+            <button
+              onClick={addSetInline}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-[var(--color-border)] text-xs font-medium text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add set
+            </button>
+            <button
+              onClick={onDelete}
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-red-50 transition-colors shrink-0"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── Full edit mode (reps / weight) ── */}
+      {isEditing && (
         <>
           <div className="mx-4 border-t border-[var(--color-border)]" />
-
-          {/* Set rows */}
-          <div className="px-4 pb-2 space-y-2.5">
+          <div className="px-4 pb-2 pt-2 space-y-2.5">
             {editSets.map((s, i) => (
               <SetRow
                 key={i}
                 index={i}
                 data={s}
                 unit={unit}
-                onChange={(patch) => handleChange(i, patch)}
-                onRemove={() => removeSet(i)}
+                onChange={(patch) => handleEditChange(i, patch)}
+                onRemove={() => removeEditSet(i)}
                 canRemove={editSets.length > 1}
               />
             ))}
           </div>
-
-          {/* Add set */}
           <div className="px-4 pb-3">
             <button
-              onClick={addSet}
+              onClick={addEditSet}
               className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-[var(--color-border)] text-xs text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
@@ -818,8 +917,6 @@ function EntryCard({
               Add set
             </button>
           </div>
-
-          {/* Actions bar */}
           <div className="flex items-center gap-2 px-4 pb-4 border-t border-[var(--color-border)] pt-3">
             <button
               onClick={onDelete}
@@ -833,14 +930,14 @@ function EntryCard({
               </svg>
             </button>
             <button
-              onClick={cancel}
-              className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] transition-colors"
+              onClick={() => setIsEditing(false)}
+              className="flex-1 py-2.5 rounded-xl border border-[var(--color-border)] text-sm font-semibold text-[var(--color-text-muted)] transition-colors"
             >
               Cancel
             </button>
             <button
-              onClick={save}
-              disabled={!canSave}
+              onClick={saveEdit}
+              disabled={!editSets.some((s) => s.reps > 0)}
               className="flex-1 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold disabled:opacity-40 transition-opacity"
             >
               Save
