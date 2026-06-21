@@ -71,6 +71,66 @@ function save(state: FiveByFiveProgram) {
   saveToStorage(KEY, state);
 }
 
+/**
+ * Migration: if the same exercise name appears more than once in exerciseDb
+ * (e.g. because it was added to a second workout before the dedup fix),
+ * keep the canonical entry (prefer DEFAULT_EXERCISE_DB id, then the one with
+ * real progress data) and remap any plan references to the duplicate ids.
+ */
+function deduplicateExerciseDb(
+  db: Record<string, FxFExerciseDef>,
+  plan: FxFPlan,
+): { exerciseDb: Record<string, FxFExerciseDef>; plan: FxFPlan; changed: boolean } {
+  // Group ids by normalized name
+  const byName: Record<string, string[]> = {};
+  for (const id of Object.keys(db)) {
+    const key = db[id].name.toLowerCase().trim();
+    if (!byName[key]) byName[key] = [];
+    byName[key].push(id);
+  }
+
+  const idRemap: Record<string, string> = {};
+  const cleanDb: Record<string, FxFExerciseDef> = { ...db };
+
+  for (const ids of Object.values(byName)) {
+    if (ids.length <= 1) continue;
+
+    // Pick canonical: prefer a DEFAULT_EXERCISE_DB key, then any entry with real data
+    const canonical =
+      ids.find((id) => DEFAULT_EXERCISE_DB[id] !== undefined) ??
+      ids.find((id) => db[id].lastWeightLbs !== null) ??
+      ids[0];
+
+    // Merge best real-data fields into the canonical entry
+    let best: FxFExerciseDef = { ...db[canonical] };
+    for (const id of ids) {
+      if (id === canonical) continue;
+      const dup = db[id];
+      // Prefer a non-default weight and real last-performance data
+      if (best.lastWeightLbs === null && dup.lastWeightLbs !== null) {
+        best = { ...best, lastWeightLbs: dup.lastWeightLbs, lastOutcome: dup.lastOutcome };
+      }
+      if (best.weightLbs === 45 && dup.weightLbs !== 45) {
+        best = { ...best, weightLbs: dup.weightLbs };
+      }
+      idRemap[id] = canonical;
+      delete cleanDb[id];
+    }
+    cleanDb[canonical] = best;
+  }
+
+  if (Object.keys(idRemap).length === 0) {
+    return { exerciseDb: db, plan, changed: false };
+  }
+
+  const remap = (ids: string[]) => ids.map((id) => idRemap[id] ?? id);
+  return {
+    exerciseDb: cleanDb,
+    plan: { A: remap(plan.A), B: remap(plan.B) },
+    changed: true,
+  };
+}
+
 export const useFiveByFiveStore = create<FiveByFiveStore>()(
   subscribeWithSelector((set, get) => {
     const loaded = loadFromStorage<Partial<FiveByFiveProgram>>(KEY, {});
@@ -96,6 +156,15 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
       sessions: (loaded as FiveByFiveProgram).sessions ?? [],
       activeSessionId: (loaded as FiveByFiveProgram).activeSessionId ?? null,
     };
+
+    // Deduplicate any exercises that were added to multiple workouts before the
+    // name-based dedup fix — this is a one-time migration that self-heals on load.
+    const deduped = deduplicateExerciseDb(initial.exerciseDb, initial.plan);
+    if (deduped.changed) {
+      initial.exerciseDb = deduped.exerciseDb;
+      initial.plan = deduped.plan;
+      save(initial); // persist the cleaned-up state immediately
+    }
 
     for (const def of Object.values(exerciseDb)) {
       syncMasterExerciseMetadata({

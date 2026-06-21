@@ -247,7 +247,33 @@ function RestTab() {
 
       {/* Progressive rest settings */}
       <div className="w-full border border-[var(--color-border)] rounded-2xl p-4 flex flex-col gap-4">
-        <p className="text-sm font-semibold text-[var(--color-text)]">Progressive Rest</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-[var(--color-text)]">Progressive Rest</p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => {
+                timer.setDuration(75);
+                timer.setIncrement(15);
+                timer.setTotalSets(5);
+                setCustomRestInput('75');
+              }}
+              className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+            >
+              5×5
+            </button>
+            <button
+              onClick={() => {
+                timer.setDuration(60);
+                timer.setIncrement(15);
+                timer.setTotalSets(3);
+                setCustomRestInput('60');
+              }}
+              className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+            >
+              Superset
+            </button>
+          </div>
+        </div>
 
         <div>
           <p className="text-xs text-[var(--color-text-muted)] mb-2">Starting rest (seconds)</p>

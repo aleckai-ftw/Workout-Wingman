@@ -29,15 +29,15 @@ interface TimerStore {
 }
 
 export const useTimerStore = create<TimerStore>()((set, get) => ({
-  durationSeconds: 90,
-  remainingSeconds: 90,
+  durationSeconds: 75,
+  remainingSeconds: 75,
   isRunning: false,
   label: 'Rest Timer',
   intervalId: null,
   readyToStart: false,
 
   // Progressive rest defaults
-  baseRestSeconds: 90,
+  baseRestSeconds: 75,
   incrementSeconds: 15,
   totalSets: 5,
   currentSet: 1,
@@ -85,7 +85,7 @@ export const useTimerStore = create<TimerStore>()((set, get) => ({
   setDuration: (seconds) => {
     const id = get().intervalId;
     if (id !== null) clearInterval(id);
-    set({ durationSeconds: seconds, remainingSeconds: seconds, isRunning: false, intervalId: null });
+    set({ durationSeconds: seconds, remainingSeconds: seconds, baseRestSeconds: seconds, isRunning: false, intervalId: null });
   },
 
   tick: () =>

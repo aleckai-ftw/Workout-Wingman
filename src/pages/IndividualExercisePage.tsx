@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { useIndivExerciseStore, todayDateKey } from '../stores/individualExerciseStore';
 import { useProfileStore } from '../stores/profileStore';
+import { useTimerStore } from '../stores/timerStore';
 import { ALL_EXERCISE_AREAS, AREA_META } from '../data/exercises';
 import type { IndivExerciseDef, IndivExerciseEntry, IndivSet } from '../types';
 
@@ -84,6 +85,7 @@ function SetRow({
   onChange,
   onRemove,
   canRemove,
+  onOutcomeSet,
 }: {
   index: number;
   data: SetRowData;
@@ -91,6 +93,7 @@ function SetRow({
   onChange: (patch: Partial<SetRowData>) => void;
   onRemove: () => void;
   canRemove: boolean;
+  onOutcomeSet?: () => void;
 }) {
   const weightDelta = unit === 'kg' ? 2.5 : 5;
 
@@ -161,7 +164,11 @@ function SetRow({
         <span className="w-14 text-xs font-semibold text-[var(--color-text-muted)] shrink-0 select-none">Result</span>
         <div className="flex flex-1 gap-2">
           <button
-            onClick={() => onChange({ outcome: data.outcome === 'success' ? null : 'success' })}
+            onClick={() => {
+              const next = data.outcome === 'success' ? null : 'success';
+              onChange({ outcome: next });
+              if (next !== null && data.outcome === null) onOutcomeSet?.();
+            }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
               data.outcome === 'success'
                 ? 'border-green-500 bg-green-50 text-green-700'
@@ -174,7 +181,11 @@ function SetRow({
             Success
           </button>
           <button
-            onClick={() => onChange({ outcome: data.outcome === 'failure' ? null : 'failure' })}
+            onClick={() => {
+              const next = data.outcome === 'failure' ? null : 'failure';
+              onChange({ outcome: next });
+              if (next !== null && data.outcome === null) onOutcomeSet?.();
+            }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
               data.outcome === 'failure'
                 ? 'border-red-500 bg-red-50 text-red-600'
@@ -219,6 +230,19 @@ function SetLoggerSheet({
     }
     return [{ reps: 0, weightDisplay: 0, outcome: null }];
   });
+
+  const timer = useTimerStore();
+
+  function fireTimer() {
+    const isBetween = !timer.isRunning && timer.remainingSeconds === 0 && timer.currentSet < timer.totalSets;
+    if (timer.isRunning) {
+      // already counting down — leave it
+    } else if (isBetween) {
+      timer.startNextSet();
+    } else {
+      timer.start(timer.baseRestSeconds, 'Exercise Rest', true);
+    }
+  }
 
   // Drag-to-close
   const [dragY, setDragY] = useState(0);
@@ -340,6 +364,7 @@ function SetLoggerSheet({
               onChange={(patch) => handleChange(i, patch)}
               onRemove={() => removeSet(i)}
               canRemove={sets.length > 1}
+              onOutcomeSet={fireTimer}
             />
           ))}
 
@@ -528,16 +553,10 @@ function ExercisePickerSheet({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div
-        className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '92dvh' }}
+        className="absolute inset-0 bg-white flex flex-col"
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 bg-[var(--color-border)] rounded-full" />
-        </div>
-
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b border-[var(--color-border)]">
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Select Exercise</h2>
           <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
