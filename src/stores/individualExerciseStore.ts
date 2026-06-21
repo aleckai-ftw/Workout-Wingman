@@ -39,8 +39,8 @@ interface IndivExerciseStore extends PersistedState {
   addSet: (entryId: string, set: Omit<IndivSet, 'id'>) => void;
   /** Remove a set from an existing entry (removes the entry if it was the last set) */
   removeSet: (entryId: string, setId: string) => void;
-  /** Update reps or weight for an existing set */
-  updateSet: (entryId: string, setId: string, patch: Partial<Pick<IndivSet, 'reps' | 'weightLbs'>>) => void;
+  /** Update reps, weight, or outcome for an existing set */
+  updateSet: (entryId: string, setId: string, patch: Partial<Pick<IndivSet, 'reps' | 'weightLbs' | 'outcome'>>) => void;
   /** Replace all sets on an entry at once (used by the edit sheet) */
   replaceEntrySets: (entryId: string, sets: Omit<IndivSet, 'id'>[]) => void;
   /** Delete an entire exercise entry */
@@ -104,6 +104,7 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
             id: crypto.randomUUID(),
             reps: rs.reps,
             weightLbs: rs.weightLbs,
+            outcome: rs.outcome ?? null,
           }));
           const entry: IndivExerciseEntry = {
             id: crypto.randomUUID(),
@@ -195,6 +196,7 @@ export const useIndivExerciseStore = create<IndivExerciseStore>()(
             id: crypto.randomUUID(),
             reps: rs.reps,
             weightLbs: rs.weightLbs,
+            outcome: rs.outcome ?? null,
           }));
           const next: PersistedState = {
             ...s,

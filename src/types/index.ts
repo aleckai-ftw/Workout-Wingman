@@ -258,6 +258,7 @@ export interface IndivSet {
   id: ID;
   reps: number;
   weightLbs: number;
+  outcome?: 'success' | 'failure' | null;
 }
 
 /** A logged exercise entry (one exercise, one or more sets, one day) */

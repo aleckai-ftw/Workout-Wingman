@@ -74,6 +74,7 @@ function NumericInput({
 interface SetRowData {
   reps: number;
   weightDisplay: number; // value shown to user (lbs or kg depending on unit)
+  outcome: 'success' | 'failure' | null;
 }
 
 function SetRow({
@@ -154,6 +155,39 @@ function SetRow({
           >+</button>
         </div>
       </div>
+
+      {/* Result toggle */}
+      <div className="flex items-center gap-2">
+        <span className="w-14 text-xs font-semibold text-[var(--color-text-muted)] shrink-0 select-none">Result</span>
+        <div className="flex flex-1 gap-2">
+          <button
+            onClick={() => onChange({ outcome: data.outcome === 'success' ? null : 'success' })}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
+              data.outcome === 'success'
+                ? 'border-green-500 bg-green-50 text-green-700'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)] bg-white'
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="w-3 h-3 shrink-0">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Success
+          </button>
+          <button
+            onClick={() => onChange({ outcome: data.outcome === 'failure' ? null : 'failure' })}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
+              data.outcome === 'failure'
+                ? 'border-red-500 bg-red-50 text-red-600'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)] bg-white'
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="w-3 h-3 shrink-0">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+            Fail
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -180,9 +214,10 @@ function SetLoggerSheet({
       return lastEntry.sets.map((s) => ({
         reps: s.reps,
         weightDisplay: unit === 'kg' ? lbsToKg(s.weightLbs) : s.weightLbs,
+        outcome: null, // don't carry last session's outcome into a new log
       }));
     }
-    return [{ reps: 0, weightDisplay: 0 }];
+    return [{ reps: 0, weightDisplay: 0, outcome: null }];
   });
 
   // Drag-to-close
@@ -216,9 +251,9 @@ function SetLoggerSheet({
   }
 
   function addSet() {
-    // Pre-fill from last set
+    // Pre-fill reps/weight from last set, but start with no outcome
     const last = sets[sets.length - 1];
-    setSets((prev) => [...prev, { ...last }]);
+    setSets((prev) => [...prev, { ...last, outcome: null }]);
   }
 
   function removeSet(i: number) {
@@ -231,6 +266,7 @@ function SetLoggerSheet({
     const converted = validSets.map((s) => ({
       reps: s.reps,
       weightLbs: unit === 'kg' ? kgToLbs(s.weightDisplay) : s.weightDisplay,
+      outcome: s.outcome ?? null,
     }));
     onLog(converted);
   }
@@ -396,6 +432,7 @@ function CustomExerciseSheet({
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              autoComplete="off"
               placeholder="e.g. Cable Lateral Raises"
               className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
@@ -437,6 +474,7 @@ function CustomExerciseSheet({
               value={muscleGroup}
               onChange={(e) => setMuscleGroup(e.target.value)}
               onFocus={(e) => setTimeout(() => e.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 300)}
+              autoComplete="off"
               placeholder={`e.g. ${area}`}
               className="w-full px-3.5 py-3 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
@@ -516,7 +554,8 @@ function ExercisePickerSheet({
             </svg>
             <input
               autoFocus
-              type="text"
+              type="search"
+              autoComplete="off"
               placeholder="Search exercises..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -634,6 +673,7 @@ function EntryCard({
       entry.sets.map((s) => ({
         reps: s.reps,
         weightDisplay: unit === 'kg' ? lbsToKg(s.weightLbs) : s.weightLbs,
+        outcome: s.outcome ?? null,
       })),
     );
     setIsExpanded(true);
@@ -649,7 +689,7 @@ function EntryCard({
 
   function addSet() {
     const last = editSets[editSets.length - 1];
-    setEditSets((prev) => [...prev, { ...last }]);
+    setEditSets((prev) => [...prev, { ...last, outcome: null }]);
   }
 
   function removeSet(i: number) {
@@ -664,6 +704,7 @@ function EntryCard({
       validSets.map((s) => ({
         reps: s.reps,
         weightLbs: unit === 'kg' ? kgToLbs(s.weightDisplay) : s.weightDisplay,
+        outcome: s.outcome ?? null,
       })),
     );
     setIsExpanded(false);
@@ -671,9 +712,18 @@ function EntryCard({
 
   const canSave = editSets.some((s) => s.reps > 0);
 
+  const allSucceeded = !isExpanded && entry.sets.length > 0 && entry.sets.every((s) => s.outcome === 'success');
+  const anyFailed = !isExpanded && entry.sets.some((s) => s.outcome === 'failure');
+
   return (
     <div className={`bg-white rounded-2xl border-2 overflow-hidden transition-colors ${
-      isExpanded ? 'border-[var(--color-primary)]/40' : 'border-[var(--color-border)]'
+      isExpanded
+        ? 'border-[var(--color-primary)]/40'
+        : allSucceeded
+        ? 'border-green-400'
+        : anyFailed
+        ? 'border-red-400'
+        : 'border-[var(--color-border)]'
     }`}>
 
       {/* ── Collapsed header (always visible) ── */}
@@ -692,7 +742,13 @@ function EntryCard({
               {entry.sets.map((s) => (
                 <span
                   key={s.id}
-                  className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--color-surface)] text-[10px] font-semibold text-[var(--color-text-muted)]"
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                    s.outcome === 'success'
+                      ? 'bg-green-100 text-green-700'
+                      : s.outcome === 'failure'
+                      ? 'bg-red-100 text-red-600'
+                      : 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'
+                  }`}
                 >
                   {s.reps}×{displayWeight(s.weightLbs, unit)}
                 </span>

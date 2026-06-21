@@ -170,6 +170,7 @@ function SessionExCard({
           {/* Custom name input */}
           <input
             type="text"
+            autoComplete="off"
             placeholder="Or type a custom exercise name…"
             value={swapQuery}
             onChange={(e) => setSwapQuery(e.target.value)}
@@ -551,6 +552,7 @@ function WorkoutPlanCard({
           {/* Name input */}
           <input
             type="text"
+            autoComplete="off"
             placeholder="Or type a custom exercise name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}

@@ -274,6 +274,21 @@ export const useFiveByFiveStore = create<FiveByFiveStore>()(
 
       addExerciseToPlan: (workout, name, weightLbs = 45, numSets = 5, area?, muscleGroup?, muscleGroups?) =>
         set((s) => {
+          // Reuse an existing exerciseDb entry if the name already exists (preserves weight/progress)
+          const existingDef = Object.values(s.exerciseDb).find(
+            (d) => d.name.toLowerCase() === name.toLowerCase(),
+          );
+          if (existingDef) {
+            // Already in this workout's plan? Skip
+            if (s.plan[workout].includes(existingDef.id)) return s;
+            const next: FiveByFiveProgram = {
+              ...s,
+              plan: { ...s.plan, [workout]: [...s.plan[workout], existingDef.id] },
+            };
+            save(next);
+            return next;
+          }
+
           const mergedMuscleGroups = muscleGroups?.length
             ? muscleGroups
             : (muscleGroup ? [muscleGroup] : []);

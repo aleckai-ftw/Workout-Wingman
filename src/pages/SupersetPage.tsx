@@ -352,6 +352,7 @@ function ExercisePicker({ label, exerciseDb, onSelect, onBack, addExercise, musc
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search exercises..."
+            autoComplete="off"
             className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:border-[var(--color-primary)] bg-[var(--color-surface)]"
           />
         </div>

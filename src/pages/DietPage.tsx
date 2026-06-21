@@ -340,7 +340,8 @@ function AddFoodSheet({
             </svg>
             <input
               autoFocus
-              type="text"
+              type="search"
+              autoComplete="off"
               placeholder="Search foods..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -755,7 +756,8 @@ function InlineFoodPicker({
           </svg>
           <input
             autoFocus
-            type="text"
+            type="search"
+            autoComplete="off"
             placeholder="Search foods..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
